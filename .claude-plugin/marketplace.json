@@ -1,0 +1,15 @@
+{
+  "name": "solidjs-v2-skills",
+  "owner": {
+    "name": "khmm12",
+    "email": "khmm12@gmail.com"
+  },
+  "description": "Self-hosted marketplace for the solidjs-v2-skills plugin",
+  "plugins": [
+    {
+      "name": "solidjs-v2-skills",
+      "source": "./",
+      "description": "SolidJS 2.0 skills: write, migrate, and review solid-js 2.x code without React/1.x reflexes"
+    }
+  ]
+}
