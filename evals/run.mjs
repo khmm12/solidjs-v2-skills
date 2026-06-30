@@ -21,18 +21,23 @@ import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const EVALS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO = dirname(EVALS_DIR);
 const RESULTS_DIR = join(EVALS_DIR, 'results');
 const REF_DIR = join(REPO, 'skills', 'solidjs-v2', 'references');
 const SKILL_MD = join(REPO, 'skills', 'solidjs-v2', 'SKILL.md');
-// Neutral working dir for every claude call. Critical: `base`/`content` must
-// NOT run inside the repo, or the model reads the very references we're testing
-// straight off disk and the control is contaminated (observed: haiku "knowing"
-// a beta.15-only fact). `deployed` reads the skill via the absolute --plugin-dir,
-// so an empty cwd is correct for it too.
-const NEUTRAL_CWD = join(RESULTS_DIR, '.cwd');
+// Neutral working dir for every claude call. Critical: `base`/`content` must NOT
+// run inside the repo, or the model auto-loads the repo CLAUDE.md / skill content
+// off disk and the control is contaminated (observed: haiku reproducing beta.15-only
+// reference text verbatim at 1 turn, vs floundering from a real neutral cwd). MUST
+// live OUTSIDE the repo tree — hence os.tmpdir(), NOT a path under RESULTS_DIR (which
+// is inside the repo). `deployed` reads the skill via the absolute --plugin-dir, so a
+// neutral cwd is correct for it too. NB: the user-level ~/.claude/CLAUDE.md still loads
+// (it's HOME-based) — that's a uniform contaminant across conditions, not the
+// differential repo leak this guards against.
+const NEUTRAL_CWD = join(tmpdir(), 'solidjs-v2-skills-eval-cwd');
 
 // ---- args -------------------------------------------------------------------
 const args = process.argv.slice(2);

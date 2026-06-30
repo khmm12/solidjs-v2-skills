@@ -65,6 +65,20 @@
       "source": "async-and-actions.md:72-79"
     },
     {
+      "id": "A5",
+      "axis": "api",
+      "title": "async generator memo — yield vs return",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "In a `createMemo(async function* () { … })`, what does each `yield` do to the memo's value, and what does `return value` do? Then contrast `return` here with `return` inside an `action(async function*)`.",
+      "must_include": [
+        "in a createMemo async generator each `yield` COMMITS a new value — the accessor updates on every yield, so the memo streams values over time",
+        "`return value` ENDS the stream and the returned value is DISCARDED (never committed); the last yielded value stays — `return` is for stopping, not for emitting a final value",
+        "in an `action(async function*)` it is the opposite: the generator's `return` value IS the action's result, and `yield` there is a transition sync point rather than a committed value"
+      ],
+      "must_not": ["return(?:ed)?\\s+value\\s+(?:is\\s+|becomes\\s+)(?:the\\s+)?committed"],
+      "source": "async-and-actions.md:63-90 (yield/return table + action row)"
+    },
+    {
       "id": "B1",
       "axis": "pattern",
       "title": "measure-then-position (createRenderEffect)",
@@ -117,6 +131,33 @@
       ],
       "must_not": ["solid-js/store", "produce\\s*\\(", "setStore\\s*\\(\\s*[\"']"],
       "source": "stores.md:1-29"
+    },
+    {
+      "id": "B5",
+      "axis": "pattern",
+      "title": "cancel an in-flight fetch on re-run",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "A memo `createMemo(async () => fetchUser(id()))` re-runs when `id()` changes. Does Solid cancel the previous in-flight request for you? Show how to abort it on a re-run and on dispose.",
+      "must_include": [
+        "Solid does NOT auto-cancel the in-flight request — it discards the superseded value but the request keeps running; you cancel it yourself with an AbortController",
+        "create the AbortController in the compute and register onCleanup(() => ac.abort()) synchronously (before the await), passing ac.signal to fetch — on a re-run or on dispose the previous request aborts"
+      ],
+      "must_not": ["createResource\\s*\\(", "createAsync\\s*\\(", "Solid (?:auto-?|automatically |already )(?:cancels|aborts)"],
+      "source": "async-and-actions.md:43-61"
+    },
+    {
+      "id": "B6",
+      "axis": "pattern",
+      "title": "stream a socket through an async-gen memo and clean it up",
+      "routed_reference": "patterns.md",
+      "prompt": "Stream messages from a WebSocket through `createMemo(async function* () { … })` so each message updates the accessor. How do you tear the socket down on dispose, and why isn't a `try/finally` inside the generator enough?",
+      "must_include": [
+        "yield* a bridge over the socket's messages so each message commits; register the teardown with onCleanup synchronously BEFORE the first await/yield — after a suspension point there is no owner (NO_OWNER_CLEANUP) and the cleanup never runs",
+        "the onCleanup must actively close the socket / cancel the source — this both frees it AND unblocks the parked await so the generator can unwind",
+        "try/finally is NOT reliable: on dispose Solid DOES call .return() on the iterator, but a generator parked on an external await won't unwind — .return() queues behind that await and finally won't run until it settles, which for a silent socket is never"
+      ],
+      "must_not": ["try\\s*/\\s*finally\\s+(?:is\\s+)?(?:enough|sufficient|reliable|fine)\\b", "Solid (?:does not|doesn't|never|won't) (?:call|invoke|drive)s?\\b[^.]{0,12}return"],
+      "source": "patterns.md:174-196; async-and-actions.md:75-90"
     },
     {
       "id": "C1",
