@@ -91,7 +91,9 @@ The techniques, individually reusable:
   replacement; upstream guidance: model refresh intent with actions/optimistic
   state, observe readiness via `<Loading>`/`isPending`).
 - **`onCleanup` + `AbortController` in compute** — superseded runs cancel their
-  fetch. This is the legitimate computation-scoped use of `onCleanup`.
+  fetch. This is the legitimate computation-scoped use of `onCleanup` (register it
+  before the first `await`/`yield`; see `async-and-actions.md` →
+  *Cancellation & cleanup* for why `try/finally` can't replace it).
 - **Lazy derived memos** (`{ lazy: true }`) — projections of a rich state object
   that cost nothing unless read, with `equals` to cut downstream noise.
 - **Tolerant flags** — wrap `isPending(state)`-style reads in `try/catch` when
@@ -165,6 +167,76 @@ const price = createMemo(
 );
 // No subscribers → socket closed; next read → fresh socket.
 ```
+
+This resolves **once** (the first message). To stream **every** message, use an
+async generator — next.
+
+## Streaming a socket through an async-generator memo
+
+Bridge the socket's push events into an async iterable and `yield*` it. The whole
+discipline is the cleanup (the *why* — Solid's `.return()` can't unwind a generator
+parked on `await` — is in `async-and-actions.md` → *Cancellation & cleanup*):
+
+```ts
+function createSocketStream<T>(url: () => string) {
+  return createMemo(async function* () {
+    const ws = new WebSocket(url());
+    const { iterable, cancel } = subscribeToAsyncIterable<T>((emit) => {
+      const onMessage = (e: MessageEvent) => emit(JSON.parse(e.data) as T);
+      ws.addEventListener("message", onMessage);
+      return () => ws.removeEventListener("message", onMessage);
+    });
+    // Sync, before the first await: cancel() ends the stream and unblocks the parked
+    // await so the generator unwinds; ws.close() releases the socket.
+    onCleanup(() => { cancel(); ws.close(); });
+    yield* iterable; // each message commits a new value; never returns on its own
+  });
+}
+// Add { lazy: true, unobserved } to make it demand-driven like the one-shot above.
+```
+
+The callback→async-iterable bridge — reusable; subscribes eagerly and **buffers**, so
+a message landing between pulls (or before the first read) isn't lost. That buffering
+is an orthogonal init-race concern, separate from the cleanup rule:
+
+```ts
+type Unsubscribe = () => void;
+
+function subscribeToAsyncIterable<T>(
+  subscribe: (emit: (value: T) => void) => Unsubscribe,
+): { iterable: AsyncIterable<T>; cancel: Unsubscribe } {
+  const buffer: T[] = [];
+  let waiter: PromiseWithResolvers<void> | null = null;
+  let done = false;
+  const wake = () => { const w = waiter; if (w) { waiter = null; w.resolve(); } };
+
+  const unsubscribe = subscribe((value) => { if (!done) { buffer.push(value); wake(); } });
+  const cancel: Unsubscribe = () => { if (!done) { done = true; unsubscribe(); wake(); } };
+
+  const iterable: AsyncIterable<T> = {
+    async *[Symbol.asyncIterator]() {
+      while (true) {
+        for (const value of buffer.splice(0)) yield value;
+        if (done) return;            // cancel() drains the buffer, then ends the loop
+        waiter ??= Promise.withResolvers<void>();
+        await waiter.promise;        // parks here until the next emit or cancel
+      }
+    },
+  };
+  return { iterable, cancel };
+}
+```
+
+Why a generator, not the one-shot `Promise` above:
+
+| | one-shot `Promise` memo | `async function*` memo |
+|---|---|---|
+| commits | the resolved value, once | every `yield`, over time |
+| `return` | — | ends the stream, value **discarded** |
+| cleanup | `onCleanup` frees the resource | `onCleanup` must also **unblock** the parked `await` |
+
+Read it under `<Loading>`: the first message resolves the boundary, later messages
+stream in as stale-while-revalidating updates.
 
 ## Persistence effect over a whole store
 

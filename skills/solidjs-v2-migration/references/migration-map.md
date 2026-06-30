@@ -205,6 +205,11 @@ const obs$ = observable(sig);                 // 1.x Solid → external
 createEffect(sig, v => externalLib.update(v)); // 2.0: push outward via effect
 ```
 
+⚠ A hot/infinite source (socket, event stream) needs `onCleanup(() => unsubscribe())`
+**before** the `await` — Solid's dispose-time `.return()` can't unwind a generator
+parked on `await`, so `for await`/`try-finally` won't clean up on their own. Full
+pattern: `solidjs-v2` → `patterns.md` (*Streaming a socket*).
+
 ### Context
 
 ```tsx
