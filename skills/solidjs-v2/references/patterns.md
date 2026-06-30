@@ -174,8 +174,14 @@ async generator — next.
 ## Streaming a socket through an async-generator memo
 
 Bridge the socket's push events into an async iterable and `yield*` it. The whole
-discipline is the cleanup (the *why* — Solid's `.return()` can't unwind a generator
-parked on `await` — is in `async-and-actions.md` → *Cancellation & cleanup*):
+discipline is the cleanup, and it has a footgun: a `try/finally` inside the generator
+is **not** enough. On dispose Solid **does** call `.return()` on the iterator — but a
+generator parked on an *external* `await` (the next socket message) won't unwind from
+it: `.return()` queues behind that `await`, and if the socket has gone quiet the
+`await` never settles, so `finally` never runs and the socket leaks. The reliable hook
+is an up-front `onCleanup` that **actively cancels** the source — which frees it *and*
+unblocks the parked `await` so the generator can unwind. (Full treatment, plus the
+plain-async tier: `async-and-actions.md` → *Cancellation & cleanup*.)
 
 ```ts
 function createSocketStream<T>(url: () => string) {
