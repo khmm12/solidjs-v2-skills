@@ -1,6 +1,6 @@
 # Reactivity: batching, effects, ownership
 
-Verified against solid-js@2.0.0-beta.14 (published typings) and `next@bff4c21` sources/tests.
+Verified against solid-js@2.0.0-beta.15 (published typings) and `next@a4ca10b` sources/tests.
 
 ## Microtask batching — reads lag writes
 

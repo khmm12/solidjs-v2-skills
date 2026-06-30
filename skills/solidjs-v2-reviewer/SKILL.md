@@ -62,6 +62,7 @@ Run these over the changed files; each hit needs a fix or a justification.
 | Store proxy passed compute→apply, read in apply | 🟡 warns, won't re-run | extract plain values / `deep(store)` in compute |
 | Async read with no `<Loading>` ancestor | 🟡 root mount deferred | add boundary where fallback UI is wanted |
 | `refresh()` called inside a computation | 🔴 throws | call from handlers/actions |
+| `isRefreshing(` call (or imported from `solid-js`) | 🔴 removed in beta.15 | gone from `solid-js` exports; detect a refresh re-run by key comparison, or use `isPending`/`<Loading>` |
 | `<For>` callback shape vs keying mode mismatch (`item()` on keyed, `i()` on `keyed={false}`) | 🔴 type/runtime error | check the mode table |
 | Dynamic boolean `keyed={cond()}` with function children | 🟡 ambiguous shape | literal mode or key function |
 | `useX`-with-throw context wrapper hooks | 🔵 dead boilerplate | direct `useContext` (throws by itself) |
@@ -89,6 +90,6 @@ Run these over the changed files; each hit needs a fix or a justification.
 Report findings ordered by severity with `file:line`, the broken expectation
 (one line), and the concrete 2.0 fix. Note clean areas that were checked.
 For deep API verification during review, the `solidjs-v2` skill's references
-cover signatures; installed typings in `node_modules` are final word — betas
-drift in both directions (e.g. `isRefreshing` shipped in beta.14 undocumented
-*and* is already queued for removal upstream).
+cover signatures; installed typings in `node_modules` are final word — the
+betas churn the public API freely (e.g. `isRefreshing` was a public `solid-js`
+export from beta.0 through beta.14, *then* removed in beta.15).

@@ -11,9 +11,10 @@ stale-while-revalidate query: emit the cached value fast, then the network
 value, carrying rich state (source, refresh status) alongside the data.
 
 ```ts
-import { createMemo, isPending, isRefreshing, onCleanup, refresh } from "solid-js";
+import { createMemo, isPending, onCleanup, refresh } from "solid-js";
 
-type QueryState<T> = {
+type QueryState<K, T> = {
+  key: K;                                 // carried so a refresh re-run is detectable without isRefreshing
   source: "cache" | "network";
   value: T;
   refresh: { status: "ok" } | { status: "refreshing" } | { status: "failed"; error: unknown };
@@ -23,15 +24,17 @@ function createCachedQuery<K, T>(options: {
   source: () => K;
   fetcher: (key: K, ctx: { signal: AbortSignal }) => Promise<T>;
   cache: { get(k: K): Promise<T | undefined>; set(k: K, v: T): Promise<void> };
+  equals?: (a: K, b: K) => boolean;       // ⚠ default is identity — see note below for composite keys
 }) {
-  const state = createMemo<QueryState<T>>(async function* (prev) {
-    const initial = !isRefreshing();      // was this re-run caused by refresh()?
-    const key = options.source();         // tracked: re-runs (fresh, not refresh) on key change
+  const sameKey = options.equals ?? Object.is;
+  const state = createMemo<QueryState<K, T>>(async function* (prev) {
+    const key = options.source();         // tracked: re-runs on key change
+    const isRefresh = prev !== undefined && sameKey(prev.key, key); // same key ⇒ refresh(); changed ⇒ fresh run
 
     const abort = new AbortController();
     onCleanup(() => abort.abort());       // cancel in-flight work when superseded/disposed
 
-    yield* streamQuery({ key, previous: initial ? undefined : prev, signal: abort.signal, ...options });
+    yield* streamQuery({ key, previous: isRefresh ? prev : undefined, signal: abort.signal, ...options });
   });
 
   // Derived projections of the state — lazy: only computed if something reads them
@@ -48,6 +51,10 @@ function createCachedQuery<K, T>(options: {
   return {
     get data() { return data(); },
     get pending() { return pending(); },
+    get error() {                          // surface a failed refresh — pending stays false on failure
+      try { const r = state().refresh; return r.status === "failed" ? r.error : undefined; }
+      catch { return undefined; }
+    },
     refresh() { refresh(state); },
   };
 }
@@ -58,13 +65,13 @@ async function* streamQuery({ key, previous, signal, fetcher, cache }) {
     return value;
   });
   if (previous) {                          // refresh path: keep showing prev, swap when network lands
-    try { yield { source: "network", value: await network, refresh: { status: "ok" } }; }
-    catch (error) { yield { ...previous, refresh: { status: "failed", error } }; }
+    try { yield { key, source: "network", value: await network, refresh: { status: "ok" } }; }
+    catch (error) { yield { ...previous, key, refresh: { status: "failed", error } }; }
     return;
   }
   const cached = await cache.get(key);     // initial path: cache fast, network when ready
-  if (cached !== undefined) yield { source: "cache", value: cached, refresh: { status: "refreshing" } };
-  yield { source: "network", value: await network, refresh: { status: "ok" } };
+  if (cached !== undefined) yield { key, source: "cache", value: cached, refresh: { status: "refreshing" } };
+  yield { key, source: "network", value: await network, refresh: { status: "ok" } };
 }
 ```
 
@@ -72,13 +79,17 @@ The techniques, individually reusable:
 
 - **`async function*` memo** — multi-step async state machines in one
   computation; every `yield` commits.
-- **`isRefreshing()` inside compute** — distinguishes a `refresh(state)` re-run
+- **Key-carried refresh detection** — distinguishes a `refresh(state)` re-run
   (keep previous value, background-revalidate) from a dependency-change re-run
-  (start over). `prev` carries the previous committed state in.
-  ⚠ `isRefreshing` works in beta.14 but is **queued for removal upstream**
-  (pending changeset). Forward-compatible alternative: carry the key in the
-  yielded state and compare — `prev` with an unchanged key ⇒ refresh re-run,
-  changed key ⇒ fresh run.
+  (start over). `prev` carries the previous committed state — including its
+  `key` — so an unchanged key ⇒ refresh re-run, a changed key ⇒ fresh run.
+  ⚠ **Comparison is identity by default** (`Object.is`): fine for primitive
+  keys, but a composite key (`() => ({ userId, page })`) is a fresh object each
+  run, so every `refresh()` would misread as a fresh run and skip the SWR path.
+  Pass an `equals` (structural, or compare a serialized key) for composite keys.
+  ⚠ This replaces `isRefreshing()`, which was **removed in beta.15** (no public
+  replacement; upstream guidance: model refresh intent with actions/optimistic
+  state, observe readiness via `<Loading>`/`isPending`).
 - **`onCleanup` + `AbortController` in compute** — superseded runs cancel their
   fetch. This is the legitimate computation-scoped use of `onCleanup`.
 - **Lazy derived memos** (`{ lazy: true }`) — projections of a rich state object
@@ -106,8 +117,9 @@ const addTodo = action(function* (todo) {
 // has installed the real data, keyed reconciliation preserves row identity.
 ```
 
-UI flags: `isPending` for revalidation, `isRefreshing` for explicit refreshes —
-never repurpose `refresh()` itself as a flag.
+UI flags: `isPending` covers both revalidation and explicit `refresh()` calls
+(`isRefreshing` was removed in beta.15) — never repurpose `refresh()` itself as
+a flag.
 
 ## Selection projection (don't notify every row)
 
@@ -196,15 +208,20 @@ function handleSubmit() {
 Scope it tightly (handlers, tests); sprinkling `flush()` to "fix" stale reads
 usually means a read belongs in JSX or an effect instead.
 
-## Known beta gotchas (observed at 2.0.0-beta.14)
+## Known beta gotchas (observed at 2.0.0-beta.15)
 
-- `Portal` from `@solidjs/web` crashed on mount in beta.14 — if a portal
-  misbehaves, check the changelog/issues before debugging your code; an
-  imperative `document.body.appendChild` fallback works meanwhile.
-- The published `@solidjs/signals` typings are the most reliable API surface —
-  betas drift in **both directions**: `isRefreshing` shipped in beta.14 without
-  ever appearing in docs, and is simultaneously queued for removal by a pending
-  upstream changeset. When docs and `node_modules` disagree, trust
+- `Portal` from `@solidjs/web` was **rewritten in beta.15** (owner-parented
+  insert via the new `host` option, no mount `Proxy`) — this resolves the
+  beta.14 mount crash plus content accumulation on keyed swaps (#2757) and
+  ownerless-effect (`NO_OWNER_EFFECT`) leaks (#2758). If you're pinned below
+  beta.15 and a portal misbehaves, an imperative `document.body.appendChild`
+  fallback works meanwhile.
+- The published `solid-js` typings are the most reliable API surface — the
+  betas churn the public API freely: `isRefreshing` was a public `solid-js`
+  export from beta.0 through beta.14 (and written up in the RFC docs), then
+  **removed in beta.15** — commit `52255dc` cut the code, typings, and docs
+  together; `@solidjs/signals` still defines it internally. When docs and
+  `node_modules` disagree, trust
   `node_modules`; before building on a beta-only API, check the repo's
   `.changeset/` directory for its scheduled fate.
 - `refresh()` semantics are also tightening upstream: a pending changeset stops

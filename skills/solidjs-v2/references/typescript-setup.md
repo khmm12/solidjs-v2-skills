@@ -1,6 +1,6 @@
 # TypeScript, JSX, imports, project setup
 
-Verified against solid-js@2.0.0-beta.14 / @solidjs/web@2.0.0-beta.14 typings.
+Verified against solid-js@2.0.0-beta.15 / @solidjs/web@2.0.0-beta.15 typings.
 
 ## Import paths
 
@@ -73,7 +73,7 @@ const [todos, { addTodo }] = useContext(TodosContext);
 primitive config (theme, locale). App-wide state doesn't need Context at all:
 a module-scope signal/store *is* a global.
 
-## Known typing traps (beta.14)
+## Known typing traps (beta.15)
 
 - `createSignal<T>(value)` with a generic `T` can fail the
   `Exclude<T, Function>` value overload — seed via the compute-fn overload:

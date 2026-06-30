@@ -33,8 +33,9 @@ both directions. When sources disagree:
 3. RFC docs / MIGRATION.md / CHEATSHEET.
 
 Before documenting any beta-only API, grep the upstream `.changeset/` directory
-for its scheduled fate (precedent: `isRefreshing` shipped in beta.14 typings,
-undocumented, with its removal already queued).
+for its scheduled fate (precedent: `isRefreshing` was a public `solid-js`
+export from beta.0 through beta.14, with its removal queued in `.changeset/` —
+and duly removed code, typings, and docs together in beta.15).
 
 ## Editing rules
 

@@ -1,7 +1,7 @@
 {
   "name": "solidjs-v2-skills",
   "description": "SolidJS 2.0 skills for Claude Code: write, migrate, and review solid-js 2.x code without React/1.x reflexes",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "khmm12",
     "email": "khmm12@gmail.com"

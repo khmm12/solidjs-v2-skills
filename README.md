@@ -75,10 +75,11 @@ Unnamespaced, instant, updates via `git pull`. No plugin machinery.
 ## Sources & versioning
 
 Distilled from `documentation/solid-2.0/` (MIGRATION.md + RFC 01–09) and
-`packages/solid/CHEATSHEET.md` at solidjs/solid `next@bff4c21`
-(solid-js@2.0.0-beta.14), with API surface verified against the **published**
-package typings — betas drift in both directions: published `@solidjs/signals`
-carries APIs absent from the docs (e.g. `isRefreshing`), and pending
-`.changeset/` entries remove APIs that today's typings still ship.
+`packages/solid/CHEATSHEET.md` at solidjs/solid `next@a4ca10b`
+(solid-js@2.0.0-beta.15), with API surface verified against the **published**
+package typings — the betas churn the public API freely: documented, public
+APIs can vanish (e.g. `isRefreshing` was a public `solid-js` export from beta.0
+through beta.14, removed wholesale in beta.15), and pending `.changeset/`
+entries remove yet more APIs that today's typings still ship.
 
 When the beta advances, see the maintenance procedure in [CLAUDE.md](CLAUDE.md).

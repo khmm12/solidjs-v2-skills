@@ -1,6 +1,6 @@
 # Async data, transitions, actions, optimistic UI
 
-Verified against solid-js@2.0.0-beta.14 (published typings) and `next@bff4c21` sources/tests.
+Verified against solid-js@2.0.0-beta.15 (published typings) and `next@a4ca10b` sources/tests.
 
 ## Async lives in computations — there is no `createResource`
 
@@ -67,18 +67,18 @@ currently pending.
   `<button disabled={isPending(user)}>Save</button>` under the boundary,
   with a disabled fallback for the initial path.
 
-## `isRefreshing()`, `latest(fn)`, `resolve(fn)`, `refresh(target)`
+## `latest(fn)`, `resolve(fn)`, `refresh(target)`
+
+> `isRefreshing()` is **gone as of beta.15** — it was a public `solid-js`
+> export from beta.0 through beta.14 (and written up in the RFC docs), removed
+> in beta.15: commit `52255dc` cut the code, typings, and docs together
+> (`@solidjs/signals` still defines it internally, but don't import it). There is
+> no public replacement: model refresh/retry intent with actions + optimistic
+> state, observe readiness via `<Loading>`/`isPending`, and detect a `refresh()`
+> re-run inside a compute by carrying the source key in the yielded state and
+> comparing (see `patterns.md`).
 
 ```ts
-isRefreshing(); // true while a refresh() is in progress — "refreshing" badge
-                // distinct from initial <Loading>. Inside a compute, tells you
-                // whether this re-run was triggered by refresh().
-                // ⚠ DEPRECATED-IN-FLIGHT: in beta.14 typings (absent from RFC
-                // docs), but a pending upstream changeset removes the public
-                // API ("model refresh intent with actions/optimistic state;
-                // readiness via Loading/isPending"). Expect it gone after
-                // beta.14 — verify the installed typings before relying on it.
-
 latest(userId); // peek at the in-flight value during a transition
                 // (may fall back to stale)
 
@@ -97,7 +97,7 @@ refresh(user);  // invalidate-and-recompute a derived read. Target must be
 
 `startTransition` / `useTransition` are gone. Transitions are a runtime
 scheduling concept; multiple can be in flight. The user-facing surface is
-`isPending` / `isRefreshing` / `<Loading>` and the optimistic APIs.
+`isPending` / `<Loading>` and the optimistic APIs.
 
 ## `action(fn)` — mutations
 
@@ -125,7 +125,7 @@ const save = action(async function* (todo) {
 
 Shape of a mutation: optimistic write → `yield`/`await` server work →
 `refresh(...)` derived reads. Don't use `refresh()` as a "refreshing" UI flag —
-that's `isPending`/`isRefreshing`'s job.
+that's `isPending`'s job.
 
 ## Optimistic primitives
 

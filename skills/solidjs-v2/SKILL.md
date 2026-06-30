@@ -67,7 +67,7 @@ Read the file matching the task before writing code in that area:
 |---|---|
 | Quick API lookup, import list, full 1.x→2.0 footgun list | `references/cheatsheet.md` (official) |
 | Signals, memos, effects, batching/flush, lifecycle, ownership, dev diagnostics | `references/reactivity.md` |
-| Data fetching, Loading/Errored, isPending/isRefreshing/latest/resolve/refresh, action(), optimistic UI | `references/async-and-actions.md` |
+| Data fetching, Loading/Errored, isPending/latest/resolve/refresh, action(), optimistic UI | `references/async-and-actions.md` |
 | createStore, reconcile, projections, snapshot/deep, merge/omit, storePath | `references/stores.md` |
 | For/Repeat/Show/Switch/Reveal, dynamic components, class/attributes/events/refs/directives, render/SSR entries | `references/control-flow-and-dom.md` |
 | tsconfig, JSX types, import paths, Context typing, test setup | `references/typescript-setup.md` |
