@@ -41,7 +41,13 @@ Betas drift: when docs and the installed package disagree, trust the typings in
    props — warns, value goes stale. Read via `props.x` inside JSX / memos /
    effect computes; `untrack(() => ...)` for deliberate one-shots.
 5. **Props are values, not accessors.** Call site: `<X v={count()} />`, never
-   `<X v={count} />`. Child: `props.v`, never `function X({ v })`.
+   `<X v={count} />`. Child: `props.v`, never `function X({ v })`. This stays
+   reactive — the compiler turns `v={count()}` into `{ get v() { return count() } }`,
+   so reading `props.v` in the child re-runs `count()` in the child's tracking
+   scope. Passing the accessor (`v={count}` + `props.v()`) to "keep reactivity" is
+   a misconception: props have **always** been getters in Solid (1.x and 2.0
+   alike — value-passing didn't change), so it's unnecessary and just forces
+   every consumer to call a function.
 6. **Async is just a computation**: `const user = createMemo(() => fetchUser(id()))`
    — no `createResource`. Wrap consumers in `<Loading fallback={...}>`;
    errors go to `<Errored>`. Revalidation indicators: `isPending(() => user())`.
@@ -72,6 +78,7 @@ Read the file matching the task before writing code in that area:
 | For/Repeat/Show/Switch/Reveal, dynamic components, class/attributes/events/refs/directives, render/SSR entries | `references/control-flow-and-dom.md` |
 | tsconfig, JSX types, import paths, Context typing, test setup | `references/typescript-setup.md` |
 | Composed patterns: SWR query, optimistic mutations, selection projections, global state, demand-driven resources | `references/patterns.md` |
+| Naming a primitive/composable (`create*` vs `use*`), cross-cutting conventions | `references/conventions.md` |
 
 ## Failure modes
 

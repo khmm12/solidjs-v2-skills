@@ -92,6 +92,50 @@ function Good(props) { return <h1>{props.title}</h1>; }                     // �
 function AlsoGood(props) { const t = untrack(() => props.title); ... }      // ✅ explicit one-shot
 ```
 
+## Passing reactive values to children — props are getters
+
+Pass the **value**, not the accessor: `<Counter value={count()} />`, and read
+`props.value` in the child. This does **not** lose reactivity — the misconception
+is to "preserve reactivity" by passing the accessor itself (`value={count}` +
+`props.value()`). That's unnecessary: props have **always** been getters in Solid
+(1.x and 2.0 alike — value-passing across the props boundary never changed). The
+compiler lowers the JSX prop to a lazy getter:
+
+```jsx
+<Counter value={count()} />
+// compiles to:
+createComponent(Counter, { get value() { return count(); } });
+```
+
+So `value` is a getter; when the child reads `props.value` inside a tracked
+scope (JSX, memo, effect compute) the `count()` call runs *there* and subscribes
+the child. Reactivity is preserved across the boundary without passing a
+function. Passing the accessor instead forces every consumer to call `props.x()`
+and is the pattern rule 5 forbids.
+
+```jsx
+// ✅ idiomatic
+<Counter value={count()} />               // child: <p>{props.value}</p>
+// ❌ misconception — works only with props.value(), don't
+<Counter value={count} />                 // child: <p>{props.value()}</p>
+```
+
+The getter is a **JSX/compiler** feature. When you hand-build a props object and
+pass it to a function/hook/composable, it's a plain object literal — the compiler
+does **not** wrap it, so a bare `{ value: count() }` evaluates `count()` once and
+freezes. Preserve reactivity explicitly, either with a getter or by passing the
+accessor as-is:
+
+```ts
+useThing({ value: count() });               // ❌ frozen — read once at call time
+useThing({ get value() { return count(); } }); // ✅ getter — re-reads reactively
+useThing({ value: count });                 // ✅ accessor as-is — hook calls opts.value()
+```
+
+So the "pass the value, not the accessor" rule is specifically the **JSX props
+boundary**, where the compiler supplies the getter. Across a manual object you
+own the laziness — getter or accessor.
+
 ## Lifecycle: `onSettled` (replaces `onMount`)
 
 ```ts
@@ -165,12 +209,45 @@ createEffect(() => saveFlag(), () => upload(snapshot(store)));
 
 ## `createRenderEffect` / `createTrackedEffect`
 
-- `createRenderEffect(compute, apply)` — same split shape, but runs
-  synchronously during the render phase (can observe intermediate state). For
-  DOM-binding-level work; app code should use `createEffect`.
+- `createRenderEffect(compute, apply)` — same split shape, but runs in the
+  render lane of the flush, before `createEffect`'s user lane. It is the
+  `useLayoutEffect` equivalent: the place to measure a node and write back
+  layout (positioning, sizing). Non-obvious point an agent will get wrong: the
+  trigger is still flush-scheduled — a signal set from a `ref` does NOT run the
+  effect inline at the setter; the effect runs in the flush *after* the node has
+  been inserted into the DOM (true for both initial mount and reactive
+  re-render — `ref` writes go through a detached owner, so the effect always
+  trails insertion). So `getBoundingClientRect()` reads true geometry, not
+  zeros. "App code should prefer `createEffect`" only rules out
+  the render lane for side effects that don't read layout; it is not a reason to
+  avoid render effects for measure-then-position work.
 - `createTrackedEffect(fn)` — single-callback tracked effect; may re-run in
   async situations; leaf owner (see `onSettled` restrictions). Rare; prefer
   `createEffect`.
+
+### Which lane to reach for
+
+| Need | Use |
+|---|---|
+| Side effect not touching layout (set title, log, subscribe, persist, network) | `createEffect` (user lane) — the default |
+| Read DOM geometry then write layout back, in lockstep with the render (position, size, scroll-into-view) | `createRenderEffect` (render lane) — the `useLayoutEffect` analog |
+| Renderer plumbing: custom attribute/property bindings, `insert`/`spread` | `createRenderEffect` |
+| Imperatively read DOM right after a state change in a handler | `flush()` then read (rare; not an effect) |
+
+Footgun: a `ref` callback fires **during render, before the node is inserted**,
+so the node is not guaranteed connected or laid out there. Don't call
+`getBoundingClientRect()` / `offset*` inside a `ref` — stash the node in a
+signal (`ref={setNode}`) and read its geometry from a `createRenderEffect`
+keyed on that signal, where the flush guarantees the node is mounted.
+
+Paint timing — do NOT carry the React model over: **both lanes run in the same
+microtask flush, before the browser paints.** `createEffect` is *not* post-paint
+like React's `useEffect` — Solid has no post-paint effect phase, and a follow-up
+flush an effect schedules also drains before paint. So choosing `createEffect`
+over `createRenderEffect` for layout does **not** cause a visible flash; both
+land before the first paint. Prefer the render lane for layout because it is the
+correct phase — runs in lockstep with DOM updates, before user-lane consumers,
+and isn't deferred by Suspense/hydration — not to avoid a flicker.
 
 ## Dev diagnostics
 

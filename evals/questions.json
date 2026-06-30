@@ -1,0 +1,241 @@
+{
+  "meta": {
+    "target": "solid-js@2.0.0-beta.15 / @solidjs/web@2.0.0-beta.15",
+    "note": "Single source of truth for the skill exam. Every must_include claim is sourced from a verified reference file (see `source`). Do NOT add a claim you cannot trace to a reference or installed typings — a wrong answer key silently inverts the eval. must_not entries are regexes that ONLY appear in wrong answers (safe for a fast pre-fail); semantic negatives are encoded as positive must_include claims instead.",
+    "axes": {
+      "api": "API understanding — signatures, what exists / what was removed",
+      "pattern": "Idiomatic basic patterns",
+      "react": "Solid vs React — does the model drag React reflexes over",
+      "v1": "Solid 2.0 vs 1.x — does the model fall back to 1.x APIs"
+    },
+    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.15, @solidjs/web). "
+  },
+  "questions": [
+    {
+      "id": "A1",
+      "axis": "api",
+      "title": "createEffect signature",
+      "routed_reference": "reactivity.md",
+      "prompt": "Describe the signature of `createEffect`: how many callbacks it takes, what each one is for, and what happens if you pass a single callback. One short paragraph plus a 3-line example.",
+      "must_include": [
+        "createEffect takes TWO functions: a compute and an apply (plus an optional options object)",
+        "compute runs tracked (records reactive deps) and returns a value; apply runs the side effect, is untracked, and may return a cleanup function",
+        "the single-callback form (one function only) throws / is invalid in 2.0"
+      ],
+      "must_not": ["dependency array", "deps\\s*array", "\\[\\s*\\w+\\s*\\]\\s*\\)\\s*;?\\s*//\\s*deps"],
+      "source": "reactivity.md:24-47; SKILL.md rule 2"
+    },
+    {
+      "id": "A2",
+      "axis": "api",
+      "title": "reads lag writes",
+      "routed_reference": "reactivity.md",
+      "prompt": "Right after calling `setCount(1)`, what does `count()` return on the very next line, and why? How do you force the new value to be readable synchronously?",
+      "must_include": [
+        "count() still returns the OLD value (0) on the next line — writes are batched on a microtask, reads return the last committed value",
+        "flush() drains the queue synchronously so the read sees the new value"
+      ],
+      "must_not": ["batch\\s*\\(", "setCount is synchronous", "returns 1 immediately"],
+      "source": "reactivity.md:5-22"
+    },
+    {
+      "id": "A3",
+      "axis": "api",
+      "title": "async data without createResource",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "How do you load data asynchronously by id and render it while showing a spinner during loading? Name the primitive and the boundary.",
+      "must_include": [
+        "async is just a computation: createMemo(() => fetchX(id())) returns a Promise, and consumers read the accessor normally (the 'no createResource' negative is enforced by the FORBIDDEN list, not this claim)",
+        "wrap consumers in a <Loading fallback={...}> boundary; loading state is structural, not a T|undefined hole"
+      ],
+      "must_not": ["createResource\\s*\\(", "\\.loading\\b", "useTransition", "startTransition"],
+      "source": "async-and-actions.md:1-38, 49-69"
+    },
+    {
+      "id": "A4",
+      "axis": "api",
+      "title": "isRefreshing removed in beta.15",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "Can you import `isRefreshing` from `solid-js` in beta.15 to show a 'refreshing…' indicator? If not, what do you use instead?",
+      "must_include": [
+        "isRefreshing is GONE from solid-js public exports as of beta.15 (it was public beta.0-beta.14, removed in beta.15) — do not import it",
+        "there is no drop-in public replacement; use isPending(() => x()) and/or <Loading> to observe readiness"
+      ],
+      "must_not": ["import\\s*\\{[^}]*isRefreshing", "yes, you can import isRefreshing"],
+      "source": "async-and-actions.md:72-79"
+    },
+    {
+      "id": "B1",
+      "axis": "pattern",
+      "title": "measure-then-position (createRenderEffect)",
+      "routed_reference": "reactivity.md",
+      "prompt": "You portal a tooltip panel into document.body and must measure it with getBoundingClientRect() then set its top/left. Which effect do you use, and where do you read the geometry — inside the `ref` callback or somewhere else? Why is the measurement correct?",
+      "must_include": [
+        "use createRenderEffect (the render-lane / useLayoutEffect analog) for measure-then-write-layout",
+        "do NOT read getBoundingClientRect in the ref callback (the node may be pre-insert / pre-layout there); stash the node in a signal via ref={setNode} and read geometry inside the effect keyed on that signal",
+        "by the time the effect runs in the flush the node is already inserted into the DOM, so getBoundingClientRect reads true geometry — NOT zeros"
+      ],
+      "must_not": ["getBoundingClientRect\\(\\)\\s* (?:inside|in) the ref", "createRenderEffect (?:reads|returns) zeros"],
+      "source": "reactivity.md:166-197"
+    },
+    {
+      "id": "B2",
+      "axis": "pattern",
+      "title": "paint timing — no flash",
+      "routed_reference": "reactivity.md",
+      "prompt": "If you used createEffect instead of createRenderEffect to position that tooltip, would the user see a visible flash of the panel at the wrong spot before it jumps into place? Explain the paint timing precisely, and give the real reason to prefer the render lane.",
+      "must_include": [
+        "NO visible flash — both the render lane and the user lane run in the SAME microtask flush, before the browser paints",
+        "createEffect is NOT post-paint like React's useEffect; Solid has no post-paint effect phase",
+        "the real reason to prefer createRenderEffect for layout is PHASE CORRECTNESS (lockstep with DOM, before user-lane consumers, not deferred by Suspense/hydration), not avoiding a flicker"
+      ],
+      "must_not": ["createEffect (?:runs|fires) after (?:the )?paint", "post-paint", "yes,? (?:the user|there) would (?:see|be) a (?:visible )?flash"],
+      "source": "reactivity.md:199-206"
+    },
+    {
+      "id": "B3",
+      "axis": "pattern",
+      "title": "list rendering with For",
+      "routed_reference": "control-flow-and-dom.md",
+      "prompt": "Render a list of todos keyed by identity. Then show how you would render it index-keyed (the old <Index> behavior). Note the callback shapes.",
+      "must_include": [
+        "use <For each={...}> — default/keyed={true} keys by identity, callback is (rawItem, indexAccessor) so the index is called i()",
+        "index-keyed is <For keyed={false}> with callback (itemAccessor, plainIndex) — item is called item(), index is a plain number"
+      ],
+      "must_not": ["<Index", "key=\\{", "import[^\\n]*\\bIndex\\b[^\\n]*from"],
+      "source": "control-flow-and-dom.md:9-28"
+    },
+    {
+      "id": "B4",
+      "axis": "pattern",
+      "title": "store nested update",
+      "routed_reference": "stores.md",
+      "prompt": "Update a nested store field `user.name` and push an item to `list` in one store. Show the import and the setter call.",
+      "must_include": [
+        "store APIs (createStore, etc.) import from 'solid-js' — the solid-js/store subpath is gone",
+        "setter takes a draft you mutate in place: setStore(s => { s.user.name = 'B'; s.list.push(x); }) — produce is the default, no produce() import"
+      ],
+      "must_not": ["solid-js/store", "produce\\s*\\(", "setStore\\s*\\(\\s*[\"']"],
+      "source": "stores.md:1-29"
+    },
+    {
+      "id": "C1",
+      "axis": "react",
+      "title": "props are not destructured",
+      "routed_reference": "reactivity.md",
+      "prompt": "Write a component that receives a `title` prop and renders it in an <h1>. Call out any reactivity pitfall a React developer would hit.",
+      "must_include": [
+        "read props.title INSIDE the JSX — function Good(props) { return <h1>{props.title}</h1> }",
+        "do NOT destructure props in the parameter list and do NOT read props at the top level of the body — it captures once, goes stale, and warns STRICT_READ_UNTRACKED"
+      ],
+      "must_not": ["function\\s+\\w+\\s*\\(\\s*\\{\\s*title", "const\\s*\\{\\s*title\\s*\\}\\s*=\\s*props"],
+      "source": "reactivity.md:81-93; SKILL.md rule 4"
+    },
+    {
+      "id": "C2",
+      "axis": "react",
+      "title": "component runs once, no re-render",
+      "routed_reference": "reactivity.md",
+      "prompt": "In Solid 2.0, how many times does a component function execute, and when do effects re-run relative to 'renders'? Contrast explicitly with React's re-render-on-every-update model.",
+      "must_include": [
+        "the component function runs exactly ONCE — there is no re-render and no virtual DOM",
+        "effects re-run only when their tracked dependencies change; the effect's compute phase IS the dependency declaration (no deps array)"
+      ],
+      "must_not": ["re-?renders on every", "component (?:re-?runs|runs again) (?:on|every)", "dependency array"],
+      "source": "SKILL.md (deps-array model error); reviewer SKILL.md React-isms"
+    },
+    {
+      "id": "C3",
+      "axis": "react",
+      "title": "pass a signal to a child",
+      "routed_reference": "reactivity.md",
+      "prompt": "Given `const [count, setCount] = createSignal(0)`, pass count to a child <Counter> that displays it. Show both the call site and how the child reads it.",
+      "must_include": [
+        "call the accessor at the JSX boundary: <Counter value={count()} /> — pass the VALUE, not the accessor function",
+        "the child reads props.value inside JSX (no destructuring)"
+      ],
+      "must_not": ["value=\\{count\\}(?!\\()", "<Counter\\s+value=\\{count\\}\\s", "function\\s+Counter\\s*\\(\\s*\\{"],
+      "source": "SKILL.md rule 5; reviewer SKILL.md"
+    },
+    {
+      "id": "C4",
+      "axis": "react",
+      "title": "translate useState + useEffect",
+      "routed_reference": "reactivity.md",
+      "prompt": "Translate this React snippet to idiomatic Solid 2.0: `const [n, setN] = useState(0); useEffect(() => { document.title = String(n); }, [n]);`",
+      "must_include": [
+        "useState(0) becomes createSignal(0)",
+        "useEffect becomes the SPLIT createEffect: createEffect(() => n(), v => { document.title = String(v); }) — compute reads n(), apply does the side effect",
+        "the dependency array [n] disappears — the compute phase tracks deps automatically"
+      ],
+      "must_not": ["useState", "useEffect", ",\\s*\\[\\s*n\\s*\\]\\s*\\)"],
+      "source": "migration-map.md:51-70; SKILL.md rule 2"
+    },
+    {
+      "id": "C5",
+      "axis": "react",
+      "title": "composable naming — create* vs use*",
+      "routed_reference": "conventions.md",
+      "prompt": "In Solid, what is the difference between naming a composable `createX` versus `useX` (for example `createPrefersDark` vs `usePrefersDark`)? When do you pick each?",
+      "must_include": [
+        "createX creates a NEW reactive primitive owned by/scoped to the calling reactive scope — a fresh independent instance per call (the default)",
+        "useX accesses something already created and SHARED, not a fresh instance: either a context (useContext) or the singleton variant of a createX primitive (created once in a singleton/detached root and reused across callers)"
+      ],
+      "must_not": ["use\\w* is (just |merely |only )?a react", "useX is (wrong|incorrect|a mistake)", "never (name|use) .*use"],
+      "source": "verified from @solid-primitives source: useWindowSize = createHydratableSingletonRoot(createWindowSize); usePrefersDark = createHydratableSingletonRoot(createPrefersDark); rationale solidjs/solid#317"
+    },
+    {
+      "id": "D1",
+      "axis": "v1",
+      "title": "batch removed",
+      "routed_reference": "reactivity.md",
+      "prompt": "Batch these two writes together in Solid 2.0: `setA(1); setB(2);`. Show the idiomatic code.",
+      "must_include": [
+        "batch() does NOT exist in 2.0 — batching is the default, so you just write setA(1); setB(2); with no wrapper",
+        "flush() is only needed if you must synchronously read your own writes right after"
+      ],
+      "must_not": ["batch\\s*\\(", "import.*batch"],
+      "source": "reactivity.md:18; migration-map.md:44-49"
+    },
+    {
+      "id": "D2",
+      "axis": "v1",
+      "title": "onMount equivalent",
+      "routed_reference": "reactivity.md",
+      "prompt": "What is the Solid 2.0 equivalent of `onMount` for component setup that adds a window resize listener and removes it on cleanup? Show it.",
+      "must_include": [
+        "use onSettled(() => { ...; return cleanup }) — it replaces onMount and supports a returned cleanup",
+        "onSettled is a leaf owner: you cannot create reactive primitives or call onCleanup inside it — return a cleanup function instead"
+      ],
+      "must_not": ["onMount", "onCleanup\\s*\\("],
+      "source": "reactivity.md:96-113; migration-map.md:30"
+    },
+    {
+      "id": "D3",
+      "axis": "v1",
+      "title": "imports moved",
+      "routed_reference": "control-flow-and-dom.md",
+      "prompt": "In Solid 2.0, where do `render`, `Portal`, and `createStore` come from? And what replaced `classList`?",
+      "must_include": [
+        "render and Portal import from '@solidjs/web' (NOT solid-js/web)",
+        "createStore (and other store APIs) import from 'solid-js' (NOT solid-js/store)",
+        "classList is gone — use the object/array form of the class prop: class={{ active: isActive() }}"
+      ],
+      "must_not": ["solid-js/web", "solid-js/store", "classList="],
+      "source": "migration-map.md:8-17; control-flow-and-dom.md:130-141"
+    },
+    {
+      "id": "D4",
+      "axis": "v1",
+      "title": "createSelector replacement",
+      "routed_reference": "stores.md",
+      "prompt": "You need a derived store that marks the selected row id without notifying every row in the list. Which 1.x API did this, and what replaces it in 2.0?",
+      "must_include": [
+        "the 1.x API was createSelector — it is gone in 2.0",
+        "the replacement is createProjection (a readonly derived store whose derive fn mutates a draft), which updates fine-grained without notifying the whole collection"
+      ],
+      "must_not": ["createSelector\\s*\\(", "use createSelector"],
+      "source": "stores.md:46-67; migration-map.md:36"
+    }
+  ]
+}

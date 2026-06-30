@@ -82,6 +82,17 @@ Run these over the changed files; each hit needs a fix or a justification.
   `createProjection`. Fixed-slot lists diffed with `<For>` → `<Repeat>`.
 - **Ownership**: module-scope effects/roots intentional? Detached lifetime must
   be explicit (`runWithOwner(null, ...)`).
+- **Composable naming**: a `createX`/`useX` prefix should match lifecycle, not
+  React habit — `createX` makes a fresh instance owned by the caller, `useX` is a
+  shared singleton or accesses an already-created thing (`useContext`). `useX` is
+  not wrong by itself (singletons are legit); flag only a per-call instance named
+  `useX`, or every composable defaulting to `useX` out of reflex.
+- **Layout lane**: DOM-geometry reads (`getBoundingClientRect`/`offset*`) belong
+  in a `createRenderEffect` (render lane), not in a `ref` callback (node may be
+  pre-insert/pre-layout there). Beware the inverse "fix" too: moving a layout
+  measure out of `createRenderEffect` into `createEffect`/a ref on the false
+  theory that render effects read a disconnected node — they don't; the trigger
+  is flush-scheduled and runs after insertion.
 - **Tests**: `flush()` after writes; `createRoot` wrappers; `resolve()` for
   async settling.
 
