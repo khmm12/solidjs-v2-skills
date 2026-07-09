@@ -1,6 +1,6 @@
 {
   "meta": {
-    "target": "solid-js@2.0.0-beta.15 / @solidjs/web@2.0.0-beta.15",
+    "target": "solid-js@2.0.0-beta.16 / @solidjs/web@2.0.0-beta.16",
     "note": "Single source of truth for the skill exam. Every must_include claim is sourced from a verified reference file (see `source`). Do NOT add a claim you cannot trace to a reference or installed typings — a wrong answer key silently inverts the eval. must_not entries are regexes that ONLY appear in wrong answers (safe for a fast pre-fail); semantic negatives are encoded as positive must_include claims instead.",
     "axes": {
       "api": "API understanding — signatures, what exists / what was removed",
@@ -8,7 +8,7 @@
       "react": "Solid vs React — does the model drag React reflexes over",
       "v1": "Solid 2.0 vs 1.x — does the model fall back to 1.x APIs"
     },
-    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.15, @solidjs/web). "
+    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.16, @solidjs/web). "
   },
   "questions": [
     {
@@ -20,10 +20,10 @@
       "must_include": [
         "createEffect takes TWO functions: a compute and an apply (plus an optional options object)",
         "compute runs tracked (records reactive deps) and returns a value; apply runs the side effect, is untracked, and may return a cleanup function",
-        "the single-callback form (one function only) throws / is invalid in 2.0"
+        "the single-callback form (one function only) is a HARD ERROR — it throws synchronously in dev (MISSING_EFFECT_FN) and the one-argument overload is TS-deprecated (never); it is invalid in 2.0"
       ],
       "must_not": ["dependency array", "deps\\s*array", "\\[\\s*\\w+\\s*\\]\\s*\\)\\s*;?\\s*//\\s*deps"],
-      "source": "reactivity.md:24-47; SKILL.md rule 2"
+      "source": "reactivity.md:24-50; SKILL.md rule 2"
     },
     {
       "id": "A2",
@@ -49,20 +49,20 @@
         "wrap consumers in a <Loading fallback={...}> boundary; loading state is structural, not a T|undefined hole"
       ],
       "must_not": ["createResource\\s*\\(", "\\.loading\\b", "useTransition", "startTransition"],
-      "source": "async-and-actions.md:1-38, 49-69"
+      "source": "async-and-actions.md:5-29, 101-109"
     },
     {
       "id": "A4",
       "axis": "api",
       "title": "isRefreshing removed in beta.15",
       "routed_reference": "async-and-actions.md",
-      "prompt": "Can you import `isRefreshing` from `solid-js` in beta.15 to show a 'refreshing…' indicator? If not, what do you use instead?",
+      "prompt": "Can you import `isRefreshing` from `solid-js` in beta.16 to show a 'refreshing…' indicator? If not, what do you use instead?",
       "must_include": [
-        "isRefreshing is GONE from solid-js public exports as of beta.15 (it was public beta.0-beta.14, removed in beta.15) — do not import it",
+        "isRefreshing is GONE from solid-js public exports (it was public beta.0-beta.14, removed in beta.15) — do not import it",
         "there is no drop-in public replacement; use isPending(() => x()) and/or <Loading> to observe readiness"
       ],
       "must_not": ["import\\s*\\{[^}]*isRefreshing", "yes, you can import isRefreshing"],
-      "source": "async-and-actions.md:72-79"
+      "source": "async-and-actions.md:136-145"
     },
     {
       "id": "A5",
@@ -76,7 +76,49 @@
         "in an `action(async function*)` it is the opposite: the generator's `return` value IS the action's result, and `yield` there is a transition sync point rather than a committed value"
       ],
       "must_not": ["return(?:ed)?\\s+value\\s+(?:is\\s+|becomes\\s+)(?:the\\s+)?committed"],
-      "source": "async-and-actions.md:63-90 (yield/return table + action row)"
+      "source": "async-and-actions.md:63-73, 183-190"
+    },
+    {
+      "id": "A6",
+      "axis": "api",
+      "title": "uncaught error halts reactivity",
+      "routed_reference": "reactivity.md",
+      "prompt": "A fetch inside a memo throws and no `<Errored>` / error boundary catches it. Users report the whole app 'freezes' — later button clicks and state updates do nothing. What happened at the reactive-system level, what is the fix, and can `resetErrorHalt` recover it in production?",
+      "must_include": [
+        "an uncaught error that escapes EVERY boundary PERMANENTLY halts reactivity (REACTIVITY_HALTED): it rethrows as an uncaught exception, then all further writes and flushes are silently ignored — it is an app crash with no automatic recovery",
+        "the fix is to wrap the fallible reactive code in an error boundary (createErrorBoundary / <Errored>) — a boundary that handles the error keeps the system alive; you do not defuse the halt",
+        "resetErrorHalt is imported from @solidjs/signals (NOT re-exported from solid-js) and exists for tests/dev tooling only — it is not an app-level production recovery hook"
+      ],
+      "must_not": ["import\\s*\\{[^}]*resetErrorHalt[^}]*\\}\\s*from\\s*[\"']solid-js[\"']"],
+      "source": "reactivity.md:81-97, 313"
+    },
+    {
+      "id": "A7",
+      "axis": "api",
+      "title": "effect error handler arm",
+      "routed_reference": "reactivity.md",
+      "prompt": "In `createEffect(compute, { effect, error })`, the `error` handler: (1) can it set a signal to record the message, (2) does it receive the original error object so `instanceof MyError` works, (3) does it catch an exception thrown inside the `effect` (apply) arm? Explain the phase and scope it runs in.",
+      "must_include": [
+        "the error handler runs in the effect phase's imperative, WRITABLE scope — setting a signal to record the error is legal there (it does NOT trip REACTIVE_WRITE_IN_OWNED_SCOPE); it is queued on the same schedule as the effect arm",
+        "it receives the ORIGINAL thrown error, not an internal wrapper, so instanceof / class branching works",
+        "it catches COMPUTE-phase errors only (a throw in compute, or an async source rejection); an error thrown inside the effect/apply arm is NOT routed here — it goes to the enclosing error boundary, so guard the apply body yourself"
+      ],
+      "must_not": ["onError\\s*\\(", "catchError\\b"],
+      "source": "reactivity.md:52-76"
+    },
+    {
+      "id": "A8",
+      "axis": "api",
+      "title": "async-gen action uncaught error + resolve rejection",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "Inside an `action(async function* () { … })`, an awaited server call rejects and nothing catches it. Does the app freeze? What happens to the returned promise and to the optimistic writes? Separately: if you `await resolve(() => user())` and the underlying source rejected, what do you get back?",
+      "must_include": [
+        "an uncaught error in an async-generator action REJECTS the returned promise and completes the transition, so the optimistic writes revert and the caller can `.catch` — it does NOT freeze the thread (a beta.16 fix)",
+        "a try/catch around the yield/await still handles an awaited rejection locally",
+        "resolve(() => user()) REJECTS with the source's own error if the source rejected"
+      ],
+      "must_not": ["resource\\.error", "createResource\\s*\\("],
+      "source": "async-and-actions.md:197-200, 151-154"
     },
     {
       "id": "B1",
@@ -90,7 +132,7 @@
         "by the time the effect runs in the flush the node is already inserted into the DOM, so getBoundingClientRect reads true geometry — NOT zeros"
       ],
       "must_not": ["getBoundingClientRect\\(\\)\\s* (?:inside|in) the ref", "createRenderEffect (?:reads|returns) zeros"],
-      "source": "reactivity.md:166-197"
+      "source": "reactivity.md:255-286"
     },
     {
       "id": "B2",
@@ -104,7 +146,7 @@
         "the real reason to prefer createRenderEffect for layout is PHASE CORRECTNESS (lockstep with DOM, before user-lane consumers, not deferred by Suspense/hydration), not avoiding a flicker"
       ],
       "must_not": ["createEffect (?:runs|fires) after (?:the )?paint", "post-paint", "yes,? (?:the user|there) would (?:see|be) a (?:visible )?flash"],
-      "source": "reactivity.md:199-206"
+      "source": "reactivity.md:288-295"
     },
     {
       "id": "B3",
@@ -117,7 +159,7 @@
         "index-keyed is <For keyed={false}> with callback (itemAccessor, plainIndex) — item is called item(), index is a plain number"
       ],
       "must_not": ["<Index", "key=\\{", "import[^\\n]*\\bIndex\\b[^\\n]*from"],
-      "source": "control-flow-and-dom.md:9-28"
+      "source": "control-flow-and-dom.md:9-27"
     },
     {
       "id": "B4",
@@ -143,7 +185,7 @@
         "create the AbortController in the compute and register onCleanup(() => ac.abort()) synchronously (before the await), passing ac.signal to fetch — on a re-run or on dispose the previous request aborts"
       ],
       "must_not": ["createResource\\s*\\(", "createAsync\\s*\\(", "Solid (?:auto-?|automatically |already )(?:cancels|aborts)"],
-      "source": "async-and-actions.md:43-61"
+      "source": "async-and-actions.md:41-61"
     },
     {
       "id": "B6",
@@ -157,7 +199,35 @@
         "try/finally is NOT reliable: on dispose Solid DOES call .return() on the iterator, but a generator parked on an external await won't unwind — .return() queues behind that await and finally won't run until it settles, which for a silent socket is never"
       ],
       "must_not": ["try\\s*/\\s*finally\\s+(?:is\\s+)?(?:enough|sufficient|reliable|fine)\\b", "Solid (?:does not|doesn't|never|won't) (?:call|invoke|drive)s?\\b[^.]{0,12}return"],
-      "source": "patterns.md:174-196; async-and-actions.md:75-90"
+      "source": "patterns.md:181-209; async-and-actions.md:75-99"
+    },
+    {
+      "id": "B7",
+      "axis": "pattern",
+      "title": "optimistic override masks isPending",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "An action does an optimistic `createOptimisticStore` write, then `yield`s the server call, then `refresh(todos)`. You try to show a `Saving…` spinner with `<Show when={isPending(() => todos())}>` — but it never appears. Why doesn't isPending report the in-flight save, and how do you show the saving state correctly?",
+      "must_include": [
+        "an active optimistic override reads isPending === false for its whole lifetime — writing the value optimistically DECLARES it the outcome, so the confirming refetch behind it is not reported as pending",
+        "for a derived optimistic STORE the mask is store-wide: while any optimistic write on it is live, every leaf — the written field, an untouched sibling, even the firewall's own refresh() refetch — reads settled",
+        "drive the Saving… affordance from co-written data instead: a flag pushed into the optimistic write itself, or a separate createOptimistic(false) flag read by value — not via isPending"
+      ],
+      "must_not": ["\\.loading\\b", "isRefreshing\\s*\\("],
+      "source": "async-and-actions.md:130-134, 220-246; stores.md:104-107"
+    },
+    {
+      "id": "B8",
+      "axis": "pattern",
+      "title": "onSettled cleanup only in an owned scope",
+      "routed_reference": "reactivity.md",
+      "prompt": "Inside an event handler (not the component body) you call `onSettled(() => { const off = subscribe(); return () => off(); })`. Does that returned cleanup run? What changed in beta.16, and where should setup-with-teardown live instead?",
+      "must_include": [
+        "a returned cleanup from onSettled is only honored in an OWNED scope (a component body); fired out of band — from an event handler, a tracked effect, or another onSettled — there is no owner to bind to, so returning a cleanup is a dev error (SETTLED_CLEANUP_UNOWNED) and is dropped in production",
+        "before beta.16 that out-of-band cleanup ran IMMEDIATELY, tearing down the setup the instant it was installed",
+        "the out-of-band one-shot fire with no cleanup is fine (e.g. onSettled(() => toast('Saved')) after a handler write); for setup-with-teardown, call the helper from the component body instead"
+      ],
+      "must_not": ["onMount\\b"],
+      "source": "reactivity.md:174-201, 308; migration-map.md:30"
     },
     {
       "id": "C1",
@@ -170,7 +240,7 @@
         "do NOT destructure props in the parameter list and do NOT read props at the top level of the body — it captures once, goes stale, and warns STRICT_READ_UNTRACKED"
       ],
       "must_not": ["function\\s+\\w+\\s*\\(\\s*\\{\\s*title", "const\\s*\\{\\s*title\\s*\\}\\s*=\\s*props"],
-      "source": "reactivity.md:81-93; SKILL.md rule 4"
+      "source": "reactivity.md:115-128; SKILL.md rule 4"
     },
     {
       "id": "C2",
@@ -193,10 +263,10 @@
       "prompt": "Given `const [count, setCount] = createSignal(0)`, pass count to a child <Counter> that displays it. Show both the call site and how the child reads it.",
       "must_include": [
         "call the accessor at the JSX boundary: <Counter value={count()} /> — pass the VALUE, not the accessor function",
-        "the child reads props.value inside JSX (no destructuring)"
+        "the child reads props.value inside JSX (no destructuring); this keeps reactivity because the compiled JSX prop is a getter that re-runs count() in the child's tracking scope"
       ],
       "must_not": ["value=\\{count\\}(?!\\()", "<Counter\\s+value=\\{count\\}\\s", "function\\s+Counter\\s*\\(\\s*\\{"],
-      "source": "SKILL.md rule 5; reviewer SKILL.md"
+      "source": "reactivity.md:130-156; SKILL.md rule 5; reviewer SKILL.md"
     },
     {
       "id": "C4",
@@ -210,7 +280,7 @@
         "the dependency array [n] disappears — the compute phase tracks deps automatically"
       ],
       "must_not": ["useState", "useEffect", ",\\s*\\[\\s*n\\s*\\]\\s*\\)"],
-      "source": "migration-map.md:51-70; SKILL.md rule 2"
+      "source": "migration-map.md:51-60; SKILL.md rule 2"
     },
     {
       "id": "C5",
@@ -223,7 +293,7 @@
         "useX accesses something already created and SHARED, not a fresh instance: either a context (useContext) or the singleton variant of a createX primitive (created once in a singleton/detached root and reused across callers)"
       ],
       "must_not": ["use\\w* is (just |merely |only )?a react", "useX is (wrong|incorrect|a mistake)", "never (name|use) .*use"],
-      "source": "verified from @solid-primitives source: useWindowSize = createHydratableSingletonRoot(createWindowSize); usePrefersDark = createHydratableSingletonRoot(createPrefersDark); rationale solidjs/solid#317"
+      "source": "conventions.md:7-38; verified from @solid-primitives source: useWindowSize = createHydratableSingletonRoot(createWindowSize); usePrefersDark = createHydratableSingletonRoot(createPrefersDark); rationale solidjs/solid#317"
     },
     {
       "id": "D1",
@@ -236,7 +306,7 @@
         "flush() is only needed if you must synchronously read your own writes right after"
       ],
       "must_not": ["batch\\s*\\(", "import.*batch"],
-      "source": "reactivity.md:18; migration-map.md:44-49"
+      "source": "reactivity.md:18; migration-map.md:41-49"
     },
     {
       "id": "D2",
@@ -245,11 +315,11 @@
       "routed_reference": "reactivity.md",
       "prompt": "What is the Solid 2.0 equivalent of `onMount` for component setup that adds a window resize listener and removes it on cleanup? Show it.",
       "must_include": [
-        "use onSettled(() => { ...; return cleanup }) — it replaces onMount and supports a returned cleanup",
+        "use onSettled(() => { ...; return cleanup }) in the component body — it replaces onMount and, in this owned scope, honors a returned cleanup (runs on owner disposal)",
         "onSettled is a leaf owner: you cannot create reactive primitives or call onCleanup inside it — return a cleanup function instead"
       ],
       "must_not": ["onMount", "onCleanup\\s*\\("],
-      "source": "reactivity.md:96-113; migration-map.md:30"
+      "source": "reactivity.md:174-201; migration-map.md:30"
     },
     {
       "id": "D3",
@@ -263,7 +333,7 @@
         "classList is gone — use the object/array form of the class prop: class={{ active: isActive() }}"
       ],
       "must_not": ["solid-js/web", "solid-js/store", "classList="],
-      "source": "migration-map.md:8-17; control-flow-and-dom.md:130-141"
+      "source": "migration-map.md:11-18, 34; control-flow-and-dom.md:135-141"
     },
     {
       "id": "D4",
@@ -276,7 +346,7 @@
         "the replacement is createProjection (a readonly derived store whose derive fn mutates a draft), which updates fine-grained without notifying the whole collection"
       ],
       "must_not": ["createSelector\\s*\\(", "use createSelector"],
-      "source": "stores.md:46-67; migration-map.md:36"
+      "source": "stores.md:47-71; migration-map.md:35"
     }
   ]
 }

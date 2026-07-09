@@ -1,6 +1,6 @@
 # Async data, transitions, actions, optimistic UI
 
-Verified against solid-js@2.0.0-beta.15 (published typings) and `next@a4ca10b` sources/tests.
+Verified against solid-js@2.0.0-beta.16 (published typings) and `next@a06d79c3` sources/tests.
 
 ## Async lives in computations — there is no `createResource`
 
@@ -127,6 +127,11 @@ currently pending.
 - Guarding interactive controls:
   `<button disabled={isPending(user)}>Save</button>` under the boundary,
   with a disabled fallback for the initial path.
+- An **active optimistic override masks this**: while an optimistic write is
+  live on the source read (store-wide for a derived optimistic store), the
+  expression reads `false` even mid-refetch — by design (see *Optimistic
+  primitives*). Drive action "Saving…" affordances from co-written data, not
+  from here.
 
 ## `latest(fn)`, `resolve(fn)`, `refresh(target)`
 
@@ -144,7 +149,8 @@ latest(userId); // peek at the in-flight value during a transition
                 // (may fall back to stale)
 
 await resolve(() => user()); // Promise that settles when the expression is
-                // non-pending. Imperative code / tests only — throws inside
+                // non-pending; rejects with the source's own error if the
+                // source rejects. Imperative code / tests only — throws inside
                 // a tracking scope.
 
 refresh(user);  // invalidate-and-recompute a derived read. Target must be
@@ -188,6 +194,11 @@ Shape of a mutation: optimistic write → `yield`/`await` server work →
 `refresh(...)` derived reads. Don't use `refresh()` as a "refreshing" UI flag —
 that's `isPending`'s job.
 
+An **uncaught error** in an async-generator action rejects the returned promise
+and completes the transition — so optimistic writes revert and the caller can
+`.catch`. It no longer freezes the thread (a beta.16 fix). A `try`/`catch`
+around a `yield`/`await` still handles an awaited rejection locally.
+
 ## Optimistic primitives
 
 Writes are transition-scoped: they apply immediately and **revert when the
@@ -205,6 +216,34 @@ const [todos2, setTodos2] = createOptimisticStore(() => api.getTodos(), [], { ke
 `createOptimisticStore(fn, seed, options?)` mirrors `createStore(fn, seed)`:
 the second argument is the backing host object/array, `options.key` controls
 reconciliation of returned values.
+
+### An active override masks `isPending` — "certainty by decree"
+
+An in-flight optimistic override reads `isPending === false` for its whole
+lifetime. Writing the value optimistically *declares* it the outcome, so the
+confirming refetch behind it is **not** reported as pending. Two edges:
+
+- Only a **derived** optimistic (`createOptimistic(async …)` or a derived
+  `createOptimisticStore`) has a confirming fetch to mask — a plain
+  `createOptimistic("Alice")` was never pending from itself anyway.
+- For a derived optimistic **store** the mask is **store-wide**: while any
+  optimistic write on it is live, every leaf — written, untouched sibling, or
+  the firewall's own `refresh()` refetch — reads settled, in both `isPending`
+  forms. Only *effective* writes arm it: a no-op write (`s => s`, or
+  `s => ({ ...s })` replaying equal values) decrees nothing and leaves the
+  store pending as before. The mask lifts when the store's optimistic state
+  clears.
+
+Consequence: an action's progress is **not** an `isPending` verdict on the
+optimistic data. Put "Saving…" affordances **in the data** — a co-written flag
+that rides along with the optimistic write, or a separate `createOptimistic`
+flag (which reverts on its own when the transition settles):
+
+```ts
+setOptimisticTodos(s => { s.push({ ...todo, pending: true }); }); // flag on the row
+// …or a dedicated flag, read by value (not via isPending):
+const [saving, setSaving] = createOptimistic(false);
+```
 
 ## Errors: one path
 

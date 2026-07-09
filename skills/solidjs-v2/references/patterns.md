@@ -119,9 +119,16 @@ const addTodo = action(function* (todo) {
 // has installed the real data, keyed reconciliation preserves row identity.
 ```
 
-UI flags: `isPending` covers both revalidation and explicit `refresh()` calls
-(`isRefreshing` was removed in beta.15) — never repurpose `refresh()` itself as
-a flag.
+UI flags: on a **resting** store (no live optimistic write) `isPending` reports
+both revalidation and explicit `refresh()` refetches. But an active optimistic
+write **masks it store-wide** — the store you just wrote reads `isPending ===
+false` for the whole transition, refetch included ("certainty by decree", see
+`async-and-actions.md` → *Optimistic primitives*). So don't drive *this*
+mutation's "Saving…" spinner off `isPending(() => todos.length)`; co-write a
+flag into the row (`{ ...todo, pending: true }`) or use a separate
+`createOptimistic(false)`.
+Never repurpose `refresh()` itself as a flag (`isRefreshing` was removed in
+beta.15).
 
 ## Selection projection (don't notify every row)
 
@@ -286,7 +293,7 @@ function handleSubmit() {
 Scope it tightly (handlers, tests); sprinkling `flush()` to "fix" stale reads
 usually means a read belongs in JSX or an effect instead.
 
-## Known beta gotchas (observed at 2.0.0-beta.15)
+## Known beta gotchas (observed at 2.0.0-beta.16)
 
 - `Portal` from `@solidjs/web` was **rewritten in beta.15** (owner-parented
   insert via the new `host` option, no mount `Proxy`) — this resolves the
@@ -298,10 +305,9 @@ usually means a read belongs in JSX or an effect instead.
   betas churn the public API freely: `isRefreshing` was a public `solid-js`
   export from beta.0 through beta.14 (and written up in the RFC docs), then
   **removed in beta.15** — commit `52255dc` cut the code, typings, and docs
-  together; `@solidjs/signals` still defines it internally. When docs and
-  `node_modules` disagree, trust
-  `node_modules`; before building on a beta-only API, check the repo's
-  `.changeset/` directory for its scheduled fate.
-- `refresh()` semantics are also tightening upstream: a pending changeset stops
-  it cascading into upstream memos (only the explicit target / top-level reads
-  of the refresh callback recompute).
+  together (as of beta.16 it is gone from `@solidjs/signals` internals too).
+  When docs and `node_modules` disagree, trust `node_modules`; before building
+  on a beta-only API, check the repo's `.changeset/` directory for its
+  scheduled fate.
+- `refresh()` no longer cascades into upstream memos (landed in beta.15): only
+  the explicit target / top-level reads of the refresh callback recompute.

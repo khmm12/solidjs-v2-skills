@@ -1,6 +1,6 @@
 # Stores: drafts, projections, helpers
 
-Verified against solid-js@2.0.0-beta.15 (published typings) and `next@a4ca10b` sources/tests.
+Verified against solid-js@2.0.0-beta.16 (published typings) and `next@a06d79c3` sources/tests.
 All store APIs are exported from `solid-js` (the `solid-js/store` subpath is gone).
 
 ## Draft-first setters (produce is the default)
@@ -41,7 +41,8 @@ setStore(s => {
 setStore(reconcile(serverState, "id"));
 ```
 
-`key` is a property name or extractor function.
+`key` is a property name or extractor function. Symbol-keyed nodes are diffed
+too, not just string keys.
 
 ## Derived stores: the memo/signal split, mirrored
 
@@ -99,6 +100,13 @@ deep(store);     // subscribes to EVERY nested property — use in an effect's
 `snapshot` replaces 1.x `unwrap` (the immutable internals mean unwrapping
 proxies isn't sufficient; `snapshot` builds a distinct object graph, preserving
 references where nothing changed).
+
+- Both **read through an active optimistic override** on a
+  `createOptimisticStore` — the optimistic value is THE value for every reader
+  (same as the proxy traps; see async optimistic mask in
+  `async-and-actions.md`).
+- A deleted trailing slot (`delete arr[i]`) stays a hole: `length` is preserved
+  and the hole serializes as `null` — the copy is not truncated.
 
 ## `merge` / `omit` (replace `mergeProps` / `splitProps`)
 

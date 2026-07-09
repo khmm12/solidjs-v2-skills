@@ -1,7 +1,7 @@
 # Control flow and DOM
 
-Verified against solid-js@2.0.0-beta.15 / @solidjs/web@2.0.0-beta.15 typings,
-`next@a4ca10b` sources and `packages/solid-web/test/flow.type-tests.tsx`.
+Verified against solid-js@2.0.0-beta.16 / @solidjs/web@2.0.0-beta.16 typings,
+`next@a06d79c3` sources and `packages/solid-web/test/flow.type-tests.tsx`.
 Control-flow components live in `solid-js`; `render`/`hydrate`/`Portal`/
 `Dynamic`/`dynamic` live in `@solidjs/web`.
 

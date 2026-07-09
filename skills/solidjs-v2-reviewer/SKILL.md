@@ -58,6 +58,7 @@ Run these over the changed files; each hit needs a fix or a justification.
 | `ownedWrite: true` on app state | 🟡 escape-hatch abuse | derive instead; ownedWrite is for internal flags |
 | Top-level `const x = props.x` / store read in component body | 🟡 warns, stale | read in JSX/memo; `untrack` if deliberate |
 | `onCleanup` inside `onSettled`/`createTrackedEffect` | 🔴 throws | return cleanup |
+| Cleanup returned from `onSettled` fired out of band (event handler/tracked effect/nested `onSettled`) | 🔴 dev error (beta.16), dropped in prod | call the setup helper from the component body (owned scope) |
 | Primitives created inside `onSettled`/tracked effect | 🔴 throws | create in component body |
 | Store proxy passed compute→apply, read in apply | 🟡 warns, won't re-run | extract plain values / `deep(store)` in compute |
 | Async read with no `<Loading>` ancestor | 🟡 root mount deferred | add boundary where fallback UI is wanted |
@@ -79,6 +80,11 @@ Run these over the changed files; each hit needs a fix or a justification.
 - **Mutation shape**: server writes wrapped in `action()` with optimistic
   state and a final `refresh()`? Ad-hoc async handlers flipping flags are the
   1.x smell in new clothes.
+- **Optimistic spinner off `isPending`**: a "Saving…" indicator driven by
+  `isPending` on data the same action just wrote optimistically can never show —
+  an active optimistic write masks `isPending` store-wide (beta.16). The flag
+  belongs in the data (co-written `pending: true` or a separate
+  `createOptimistic(false)`).
 - **Granularity**: selection/derived caches notifying whole collections →
   `createProjection`. Fixed-slot lists diffed with `<For>` → `<Repeat>`.
 - **Ownership**: module-scope effects/roots intentional? Detached lifetime must

@@ -1,6 +1,6 @@
 # Reactivity: batching, effects, ownership
 
-Verified against solid-js@2.0.0-beta.15 (published typings) and `next@a4ca10b` sources/tests.
+Verified against solid-js@2.0.0-beta.16 (published typings) and `next@a06d79c3` sources/tests.
 
 ## Microtask batching — reads lag writes
 
@@ -23,7 +23,10 @@ count();   // 1
 
 ## Split effects: compute → apply
 
-`createEffect` takes **two functions**. The single-callback form throws.
+`createEffect` takes **two functions**. The single-callback form is a hard
+error: it throws synchronously in dev (`MISSING_EFFECT_FN`), and TS flags the
+one-argument overload as deprecated (`createEffect(compute): never`). Want a
+derived value → `createMemo`; want a one-shot side effect → just call it.
 
 ```ts
 createEffect(
@@ -51,22 +54,54 @@ Error handling — pass an `EffectBundle` instead of the apply function:
 ```ts
 createEffect(() => fetchData(id()), {
   effect: (data) => render(data),
-  error: (err, cleanup) => { console.error(err); cleanup(); },
+  error: (err, cleanup) => { setErrorMsg(String(err)); cleanup(); },  // signal write is legal here
 });
 ```
 
 This replaces `onError` / `catchError` for programmatic handling (UI-level
-errors go to `<Errored>`).
+errors go to `<Errored>`). The `error` handler is the **error arm of the
+effect phase**: it is queued on the same schedule as the `effect` arm and runs
+in the same **imperative, writable scope** — so setting a signal to record the
+error is legal there (it does *not* trip `REACTIVE_WRITE_IN_OWNED_SCOPE`). It
+receives the **original thrown error**, not an internal wrapper, so
+`instanceof` / class branching works. A `throw` from the handler escalates to
+the nearest error boundary, or halts the system if there is none (see below).
+
+- The handler catches **compute-phase** errors only (a throw in the compute
+  function, or an async source rejection). An error thrown inside the `effect`
+  (apply) arm is *not* routed here — it goes to the enclosing error boundary
+  (or halts). The apply body is your own imperative code; guard it yourself.
+- Because it observes **settled** outcomes, an error raised and then recovered
+  within the same flush runs the `effect` arm instead of the handler, and a
+  held transition defers the handler exactly as it defers `effect`.
 
 The `on(...)` helper is gone — the compute phase *is* the explicit dependency
 declaration. `on([a, b], ...)` becomes `createEffect(() => [a(), b()], ([a, b]) => ...)`.
+
+## Uncaught errors halt the reactive system
+
+An error that escapes **every** error boundary **permanently halts** reactivity:
+it rethrows as an uncaught exception, then all further writes and flushes are
+silently ignored and a `REACTIVITY_HALTED` message is logged. There is no
+partial-update limbo and no automatic recovery — an uncaught error is an app
+crash. This fires only when *nothing* catches it: a `createErrorBoundary` /
+`<Errored>` that handles the error keeps the system alive, so the fix is to
+wrap fallible reactive code in a boundary, not to defuse the halt.
+
+```ts
+import { resetErrorHalt } from "@solidjs/signals";  // NOT re-exported from solid-js
+```
+
+`resetErrorHalt()` revives scheduling, but it exists for **tests and dev
+tooling** only — it is not an app-level recovery hook. Don't reach for it to
+"un-crash" production; use a boundary.
 
 ## No writes in owned scope
 
 Writing a signal/store inside a reactive scope (memo, effect compute, component
 body) **throws in dev** (`REACTIVE_WRITE_IN_OWNED_SCOPE`). So does calling
-`refresh()` there. Writes belong in event handlers, actions, `onSettled`, or
-untracked blocks.
+`refresh()` there. Writes belong in event handlers, actions, `onSettled`,
+effect apply/error arms, or untracked blocks.
 
 ```ts
 createMemo(() => setDoubled(count() * 2));   // ❌ throws
@@ -139,16 +174,26 @@ own the laziness — getter or accessor.
 ## Lifecycle: `onSettled` (replaces `onMount`)
 
 ```ts
+// In a component body — an OWNED scope. Only here is a returned cleanup honored.
 onSettled(() => {
   measureLayout();
   const onResize = () => measureLayout();
   window.addEventListener("resize", onResize);
-  return () => window.removeEventListener("resize", onResize);  // cleanup supported
+  return () => window.removeEventListener("resize", onResize);  // fires on owner disposal
 });
 ```
 
 - Works in component bodies (after first reactive settle) **and** in event
   handlers (defer until the triggered transition settles).
+- **A returned cleanup is only honored in an owned scope** (a component body),
+  where it runs on owner disposal. When `onSettled` fires **out of band** — from
+  an event handler, a tracked effect, or another `onSettled` — there is no owner
+  lifecycle to bind to, so returning a cleanup is a dev error
+  (`SETTLED_CLEANUP_UNOWNED`) and is dropped in production. (Before beta.16 that
+  cleanup ran *immediately*, tearing down setup helpers the instant they
+  installed.) The out-of-band one-shot fire itself (no cleanup) is fine — use it
+  for `onSettled(() => toast("Saved"))` after a handler write; for
+  setup-with-teardown, call the helper from the component body instead.
 - Reactive reads are allowed inside.
 - `onSettled` and `createTrackedEffect` are **leaf owners**: you cannot create
   reactive primitives (`createSignal`, `createMemo`, `createEffect`, …) or call
@@ -260,9 +305,12 @@ Every dev-mode diagnostic has a code. The ones you'll hit, with the fix:
 | `PENDING_ASYNC_UNTRACKED_READ` | error | Read async values in a tracked scope (JSX/memo/compute) |
 | `ASYNC_OUTSIDE_LOADING_BOUNDARY` | warn | FYI: root mount deferred until async settles; add `<Loading>` for explicit fallback. If the app "doesn't mount", check for this |
 | `CLEANUP_IN_FORBIDDEN_SCOPE` | error | Return a cleanup function from `onSettled`/`createTrackedEffect` instead of `onCleanup` |
+| `SETTLED_CLEANUP_UNOWNED` | error | Don't return a cleanup from an out-of-band `onSettled` (event handler/tracked effect/nested `onSettled`); call the setup helper from the component body |
 | `PENDING_ASYNC_FORBIDDEN_SCOPE` | warn | Don't read pending async in `onSettled`/tracked effect; use `createEffect` |
+| `MISSING_EFFECT_FN` | error | Pass the apply function: `createEffect(compute, apply)` — the single-argument form is invalid |
 | `NO_OWNER_EFFECT` / `NO_OWNER_CLEANUP` / `NO_OWNER_BOUNDARY` | warn | Create inside a component or `createRoot` |
 | `RUN_WITH_DISPOSED_OWNER` | warn | Don't reuse disposed owners |
+| `REACTIVITY_HALTED` | log | An uncaught error halted reactivity; further writes/flushes are ignored. Wrap fallible code in an error boundary; `resetErrorHalt()` (`@solidjs/signals`) is tests/dev-only |
 
 Programmatic access (tooling/tests): `DEV.diagnostics.subscribe(listener)` and
 `DEV.diagnostics.capture()` (returns `{ events, clear(), stop() }`).

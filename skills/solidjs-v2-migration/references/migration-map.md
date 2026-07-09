@@ -1,8 +1,8 @@
 # Solid 1.x → 2.0 migration map
 
 Full rename/removal table with before/after recipes. Source: official
-MIGRATION.md + RFCs at solidjs/solid@next (a4ca10b), verified against
-solid-js@2.0.0-beta.15 typings.
+MIGRATION.md + RFCs at solidjs/solid@next (a06d79c3), verified against
+solid-js@2.0.0-beta.16 typings.
 
 ## Import paths (mechanical)
 
@@ -27,7 +27,7 @@ solid-js@2.0.0-beta.15 typings.
 | `mergeProps` | `merge` (⚠ `undefined` now overrides, not "skip") |
 | `splitProps(p, ["a"])` → `[local, rest]` | `omit(p, "a")` → rest only; read locals via `p.a` |
 | `unwrap` | `snapshot` |
-| `onMount` | `onSettled` (may return cleanup; leaf owner — no primitives/`onCleanup` inside) |
+| `onMount` | `onSettled` (may return cleanup **in an owned scope only** — out-of-band fires (event handler/tracked effect) make a returned cleanup a dev error, `SETTLED_CLEANUP_UNOWNED`; leaf owner — no primitives/`onCleanup` inside) |
 | `equalFn` | `isEqual` |
 | `getListener` | `getObserver` |
 | `Context.Provider` | the context itself: `<Ctx value={...}>` |
@@ -135,12 +135,17 @@ const addTodo = action(function* (todo) {
 ```
 
 `startTransition`/`useTransition` → delete; transitions are built-in. Pending
-UI: `isPending` / `<Loading on={...}>`.
+UI: `isPending` / `<Loading on={...}>` — but an active optimistic write **masks
+`isPending` store-wide** for its whole transition, so drive *this* mutation's
+"Saving…" state from a co-written flag in the data, not from `isPending` (see
+`solidjs-v2` skill, async-and-actions.md → Optimistic primitives).
 
 ### `onError` / `catchError` → structural
 
 UI-level: `<Errored fallback={(err, reset) => ...}>` (note `err()` accessor).
-Programmatic: `createEffect(compute, { effect, error: (err, cleanup) => ... })`.
+Programmatic: `createEffect(compute, { effect, error: (err, cleanup) => ... })` —
+the handler is queued with the effect phase, may write signals, and receives the
+original error (semantics: `solidjs-v2` skill, reactivity.md → Split effects).
 `resetErrorBoundaries` → delete (boundaries heal; `reset` arg for manual retry).
 
 ### Stores: `produce` / paths / `createMutable`
