@@ -1,6 +1,6 @@
 # Reactivity: batching, effects, ownership
 
-Verified against solid-js@2.0.0-beta.16 (published typings) and `next@a06d79c3` sources/tests.
+Verified against solid-js@2.0.0-beta.17 (published typings) and `next@a51cac19` sources/tests.
 
 ## Microtask batching — reads lag writes
 
@@ -64,8 +64,10 @@ effect phase**: it is queued on the same schedule as the `effect` arm and runs
 in the same **imperative, writable scope** — so setting a signal to record the
 error is legal there (it does *not* trip `REACTIVE_WRITE_IN_OWNED_SCOPE`). It
 receives the **original thrown error**, not an internal wrapper, so
-`instanceof` / class branching works. A `throw` from the handler escalates to
-the nearest error boundary, or halts the system if there is none (see below).
+`instanceof` / class branching works. This includes nullish/falsy rejections:
+`Promise.reject(undefined)` reaches it as `undefined`, not as an internal
+`StatusError` (fixed in beta.17). A `throw` from the handler escalates to the
+nearest error boundary, or halts the system if there is none (see below).
 
 - The handler catches **compute-phase** errors only (a throw in the compute
   function, or an async source rejection). An error thrown inside the `effect`
@@ -96,12 +98,16 @@ import { resetErrorHalt } from "@solidjs/signals";  // NOT re-exported from soli
 tooling** only — it is not an app-level recovery hook. Don't reach for it to
 "un-crash" production; use a boundary.
 
-## No writes in owned scope
+## No writes or action calls in owned scope
 
 Writing a signal/store inside a reactive scope (memo, effect compute, component
 body) **throws in dev** (`REACTIVE_WRITE_IN_OWNED_SCOPE`). So does calling
-`refresh()` there. Writes belong in event handlers, actions, `onSettled`,
-effect apply/error arms, or untracked blocks.
+`refresh()` there. As of beta.17, **invoking** an `action()` there also throws
+synchronously in dev (`ACTION_CALLED_IN_OWNED_SCOPE`): the eventual post-await
+write otherwise escapes the write guard and can livelock a scope that tracks
+the same state. Defining the action there is fine; call it from event handlers,
+effect apply/error arms, `onSettled`/tracked effects, or another imperative
+scope.
 
 ```ts
 createMemo(() => setDoubled(count() * 2));   // ❌ throws
@@ -220,6 +226,26 @@ const expensive = createMemo(() => heavy(source()), { lazy: true });
 - Other options: `equals: false | (prev, next) => boolean` (signals and memos),
   `name` (debugging).
 
+## `createReaction` — one-shot tracking, replace on re-arm
+
+`createReaction(callback)` returns a `track(fn)` function. `track` runs `fn` to
+subscribe without firing the callback; the **next** invalidation fires the
+callback once and disarms the reaction. Re-arm explicitly for another cycle:
+
+```ts
+const track = createReaction(() => {
+  syncToExternalSystem();
+  track(() => source());
+});
+track(() => source());
+```
+
+Calling `track()` again **before** the current arm fires replaces the previous
+arm (restored in beta.17); it does not accumulate subscriptions. After
+`track(() => a()); track(() => b())`, a change to `a` does nothing and the next
+change to `b` fires once. The callback may return a cleanup function; it runs
+before the next callback invocation or when the owning scope disposes.
+
 ## Ownership
 
 - `createRoot(dispose => ...)` created inside an owned scope is **owned by that
@@ -301,6 +327,7 @@ Every dev-mode diagnostic has a code. The ones you'll hit, with the fix:
 | Code | Severity | Fix |
 |---|---|---|
 | `REACTIVE_WRITE_IN_OWNED_SCOPE` | error | Move write to handler/action/`onSettled`; derive with memo; `ownedWrite` only for internal state |
+| `ACTION_CALLED_IN_OWNED_SCOPE` | error | Define the action wherever appropriate, but invoke it from a handler/effect callback/`onSettled`, not a component body or computation |
 | `STRICT_READ_UNTRACKED` | warn | Read in JSX/memo/effect-compute, or wrap in `untrack` |
 | `PENDING_ASYNC_UNTRACKED_READ` | error | Read async values in a tracked scope (JSX/memo/compute) |
 | `ASYNC_OUTSIDE_LOADING_BOUNDARY` | warn | FYI: root mount deferred until async settles; add `<Loading>` for explicit fallback. If the app "doesn't mount", check for this |

@@ -1,6 +1,6 @@
 # solidjs-v2-skills
 
-Claude Code skills for SolidJS 2.0 (`solid-js@2.x` / `next` betas).
+Agent skills for SolidJS 2.0 (`solid-js@2.x` / `next` betas).
 
 Solid 2.0 is a near-total API rework: microtask batching, split effects, async
 computations instead of `createResource`, draft-first stores, `@solidjs/web`
@@ -75,11 +75,27 @@ Unnamespaced, instant, updates via `git pull`. No plugin machinery.
 ## Sources & versioning
 
 Distilled from `documentation/solid-2.0/` (MIGRATION.md + RFC 01–09) and
-`packages/solid/CHEATSHEET.md` at solidjs/solid `next@a06d79c3`
-(solid-js@2.0.0-beta.16), with API surface verified against the **published**
+`packages/solid/CHEATSHEET.md` at solidjs/solid `next@a51cac19`
+(solid-js@2.0.0-beta.17), with API surface verified against the **published**
 package typings — the betas churn the public API freely: documented, public
 APIs can vanish (e.g. `isRefreshing` was a public `solid-js` export from beta.0
 through beta.14, removed wholesale in beta.15), and pending `.changeset/`
 entries remove yet more APIs that today's typings still ship.
 
 When the beta advances, see the maintenance procedure in [CLAUDE.md](CLAUDE.md).
+
+## Eval
+
+The dependency-free exam runner supports Claude and Codex answer backends over
+the same rubric bank. It separates a no-skill control, perfect content routing,
+and agentic skill retrieval:
+
+```sh
+node evals/run.mjs --quick
+node evals/run.mjs --provider codex --models gpt-5.6-luna --quick
+```
+
+Codex runs are ephemeral, use an auth-only temporary `CODEX_HOME` plus a
+read-only sandbox, and reject tool-contaminated control cells. See
+[evals/PLAN.md](evals/PLAN.md) for condition semantics, grading, and
+release-grade runs.

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "target": "solid-js@2.0.0-beta.16 / @solidjs/web@2.0.0-beta.16",
+    "target": "solid-js@2.0.0-beta.17 / @solidjs/web@2.0.0-beta.17",
     "note": "Single source of truth for the skill exam. Every must_include claim is sourced from a verified reference file (see `source`). Do NOT add a claim you cannot trace to a reference or installed typings — a wrong answer key silently inverts the eval. must_not entries are regexes that ONLY appear in wrong answers (safe for a fast pre-fail); semantic negatives are encoded as positive must_include claims instead.",
     "axes": {
       "api": "API understanding — signatures, what exists / what was removed",
@@ -8,7 +8,7 @@
       "react": "Solid vs React — does the model drag React reflexes over",
       "v1": "Solid 2.0 vs 1.x — does the model fall back to 1.x APIs"
     },
-    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.16, @solidjs/web). "
+    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.17, @solidjs/web). "
   },
   "questions": [
     {
@@ -49,20 +49,20 @@
         "wrap consumers in a <Loading fallback={...}> boundary; loading state is structural, not a T|undefined hole"
       ],
       "must_not": ["createResource\\s*\\(", "\\.loading\\b", "useTransition", "startTransition"],
-      "source": "async-and-actions.md:5-29, 101-109"
+      "source": "async-and-actions.md:5-29, 102-109"
     },
     {
       "id": "A4",
       "axis": "api",
       "title": "isRefreshing removed in beta.15",
       "routed_reference": "async-and-actions.md",
-      "prompt": "Can you import `isRefreshing` from `solid-js` in beta.16 to show a 'refreshing…' indicator? If not, what do you use instead?",
+      "prompt": "Can you import `isRefreshing` from `solid-js` in beta.17 to show a 'refreshing…' indicator? If not, what do you use instead?",
       "must_include": [
         "isRefreshing is GONE from solid-js public exports (it was public beta.0-beta.14, removed in beta.15) — do not import it",
         "there is no drop-in public replacement; use isPending(() => x()) and/or <Loading> to observe readiness"
       ],
       "must_not": ["import\\s*\\{[^}]*isRefreshing", "yes, you can import isRefreshing"],
-      "source": "async-and-actions.md:136-145"
+      "source": "async-and-actions.md:139-146"
     },
     {
       "id": "A5",
@@ -76,7 +76,7 @@
         "in an `action(async function*)` it is the opposite: the generator's `return` value IS the action's result, and `yield` there is a transition sync point rather than a committed value"
       ],
       "must_not": ["return(?:ed)?\\s+value\\s+(?:is\\s+|becomes\\s+)(?:the\\s+)?committed"],
-      "source": "async-and-actions.md:63-73, 183-190"
+      "source": "async-and-actions.md:63-73, 192-200"
     },
     {
       "id": "A6",
@@ -90,7 +90,7 @@
         "resetErrorHalt is imported from @solidjs/signals (NOT re-exported from solid-js) and exists for tests/dev tooling only — it is not an app-level production recovery hook"
       ],
       "must_not": ["import\\s*\\{[^}]*resetErrorHalt[^}]*\\}\\s*from\\s*[\"']solid-js[\"']"],
-      "source": "reactivity.md:81-97, 313"
+      "source": "reactivity.md:83-99, 340"
     },
     {
       "id": "A7",
@@ -104,7 +104,7 @@
         "it catches COMPUTE-phase errors only (a throw in compute, or an async source rejection); an error thrown inside the effect/apply arm is NOT routed here — it goes to the enclosing error boundary, so guard the apply body yourself"
       ],
       "must_not": ["onError\\s*\\(", "catchError\\b"],
-      "source": "reactivity.md:52-76"
+      "source": "reactivity.md:52-78"
     },
     {
       "id": "A8",
@@ -118,7 +118,63 @@
         "resolve(() => user()) REJECTS with the source's own error if the source rejected"
       ],
       "must_not": ["resource\\.error", "createResource\\s*\\("],
-      "source": "async-and-actions.md:197-200, 151-154"
+      "source": "async-and-actions.md:206-211, 152-155"
+    },
+    {
+      "id": "A9",
+      "axis": "api",
+      "title": "action invocation scope guard",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "A component defines `const save = action(async function* () { await api.save(); yield; setSaved(true); })` and then calls `save()` directly in the component body (or from a memo compute). Is that legal in beta.17? Where should the call live, and what failure is the guard preventing?",
+      "must_include": [
+        "DEFINING the action during component setup is fine, but INVOKING it synchronously from an owned scope (component body, memo/effect compute) throws in dev with ACTION_CALLED_IN_OWNED_SCOPE",
+        "invoke it from an event handler, effect apply/error callback, onSettled/tracked effect, or another IMPERATIVE scope",
+        "starting an action is a transaction-starting write; without the guard, a computation tracking what the action writes can LIVELOCK: each write retriggers the compute and starts a replacement transition before the value commits"
+      ],
+      "must_not": ["call(?:ing)? it (?:directly )?in (?:the )?component body is (?:fine|legal|allowed)"],
+      "source": "async-and-actions.md:170-181; reactivity.md:101-110"
+    },
+    {
+      "id": "A10",
+      "axis": "api",
+      "title": "falsy error identity and nested boundaries",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "In beta.17, what values reach user code for `Promise.reject(null)` under `<Errored>` / an effect `error` arm, and for an action generator that `throw undefined` — does the returned action Promise resolve or reject? Also, in `<Errored outer><Loading><Errored inner>...</Errored></Loading></Errored>`, which boundary catches an error from the inner content?",
+      "must_include": [
+        "error identity is exact even for nullish/falsy values: Promise.reject(null) reaches err() and the effect error arm as null, not an internal StatusError wrapper",
+        "an action generator that throws undefined REJECTS its returned promise with undefined — it does not resolve successfully; do not infer success from error truthiness",
+        "the INNER Errored catches its content even through the intervening Loading; boundaries consume and forward independent status dimensions"
+      ],
+      "must_not": ["StatusError (?:is|will be) (?:passed|returned|received)", "action[^.]{0,80}resolves? (?:successfully )?(?:with )?undefined"],
+      "source": "async-and-actions.md:206-211, 259-289; reactivity.md:61-75"
+    },
+    {
+      "id": "A11",
+      "axis": "api",
+      "title": "empty async iterator settlement",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "A memo uses `createMemo(async function* () { return finalValue; })` and never yields. In beta.17, does its `<Loading>` fallback stay forever, and does `finalValue` become the memo value? What should the generator do to publish a final value?",
+      "must_include": [
+        "an async iterator that completes without yielding now settles the memo to undefined, so Loading RELEASES instead of remaining forever (beta.17)",
+        "the generator's return value is DISCARDED for a memo — finalValue does not become the accessor value",
+        "use yield finalValue to commit/publish the final value"
+      ],
+      "must_not": ["fallback (?:stays|remains|shows) (?:forever|indefinitely)", "return(?:ed)? value (?:is|becomes) (?:the )?(?:memo|accessor) value"],
+      "source": "async-and-actions.md:63-73, 92-100"
+    },
+    {
+      "id": "A12",
+      "axis": "api",
+      "title": "createReaction re-arm replacement",
+      "routed_reference": "reactivity.md",
+      "prompt": "For `const track = createReaction(cb); track(() => a()); track(() => b());`, both track calls happen before either source changes. In beta.17, what happens when `a` changes and then `b` changes? Is the reaction persistent, and how is it armed for another cycle?",
+      "must_include": [
+        "the second track call REPLACES the first arm; changing a does nothing, then changing b fires cb exactly once",
+        "createReaction is one-shot: the callback fires on the next invalidation and the reaction disarms",
+        "call track(...) again — commonly inside cb — to arm the next cycle"
+      ],
+      "must_not": ["both (?:a and b|sources) (?:fire|trigger)", "reaction (?:is|stays|remains) persistent"],
+      "source": "reactivity.md:229-247"
     },
     {
       "id": "B1",
@@ -132,7 +188,7 @@
         "by the time the effect runs in the flush the node is already inserted into the DOM, so getBoundingClientRect reads true geometry — NOT zeros"
       ],
       "must_not": ["getBoundingClientRect\\(\\)\\s* (?:inside|in) the ref", "createRenderEffect (?:reads|returns) zeros"],
-      "source": "reactivity.md:255-286"
+      "source": "reactivity.md:281-312"
     },
     {
       "id": "B2",
@@ -146,7 +202,7 @@
         "the real reason to prefer createRenderEffect for layout is PHASE CORRECTNESS (lockstep with DOM, before user-lane consumers, not deferred by Suspense/hydration), not avoiding a flicker"
       ],
       "must_not": ["createEffect (?:runs|fires) after (?:the )?paint", "post-paint", "yes,? (?:the user|there) would (?:see|be) a (?:visible )?flash"],
-      "source": "reactivity.md:288-295"
+      "source": "reactivity.md:314-321"
     },
     {
       "id": "B3",
@@ -159,7 +215,7 @@
         "index-keyed is <For keyed={false}> with callback (itemAccessor, plainIndex) — item is called item(), index is a plain number"
       ],
       "must_not": ["<Index", "key=\\{", "import[^\\n]*\\bIndex\\b[^\\n]*from"],
-      "source": "control-flow-and-dom.md:9-27"
+      "source": "control-flow-and-dom.md:8-27"
     },
     {
       "id": "B4",
@@ -199,7 +255,7 @@
         "try/finally is NOT reliable: on dispose Solid DOES call .return() on the iterator, but a generator parked on an external await won't unwind — .return() queues behind that await and finally won't run until it settles, which for a silent socket is never"
       ],
       "must_not": ["try\\s*/\\s*finally\\s+(?:is\\s+)?(?:enough|sufficient|reliable|fine)\\b", "Solid (?:does not|doesn't|never|won't) (?:call|invoke|drive)s?\\b[^.]{0,12}return"],
-      "source": "patterns.md:181-209; async-and-actions.md:75-99"
+      "source": "patterns.md:183-211; async-and-actions.md:75-100"
     },
     {
       "id": "B7",
@@ -213,7 +269,7 @@
         "drive the Saving… affordance from co-written data instead: a flag pushed into the optimistic write itself, or a separate createOptimistic(false) flag read by value — not via isPending"
       ],
       "must_not": ["\\.loading\\b", "isRefreshing\\s*\\("],
-      "source": "async-and-actions.md:130-134, 220-246; stores.md:104-107"
+      "source": "async-and-actions.md:131-135, 231-257; stores.md:127-130"
     },
     {
       "id": "B8",
@@ -227,7 +283,37 @@
         "the out-of-band one-shot fire with no cleanup is fine (e.g. onSettled(() => toast('Saved')) after a handler write); for setup-with-teardown, call the helper from the component body instead"
       ],
       "must_not": ["onMount\\b"],
-      "source": "reactivity.md:174-201, 308; migration-map.md:30"
+      "source": "reactivity.md:180-210, 335; migration-map.md:30"
+    },
+    {
+      "id": "B9",
+      "axis": "pattern",
+      "title": "store-in-store structural tracking",
+      "routed_reference": "stores.md",
+      "prompt": "A derived store returns an inner store, and `<For each={outer.items}>` renders it. After the inner store is reconciled, direct reads show fresh rows but an older beta left `<For>` stale. What is the beta.17 contract for `<For>`/`mapArray`, `Object.keys`, `snapshot`, and `deep` through this wrapper? Should you clone the inner store as a workaround?",
+      "must_include": [
+        "in beta.17 structural tracking chains through the outer wrapper to the inner store, so reconcile/add/delete invalidates <For>/mapArray and Object.keys as well as snapshot/deep",
+        "structural consumers and direct property reads now stay consistent; the stale optimistic row bug through a wrapper is fixed",
+        "do NOT clone the inner store as a workaround — update to beta.17 or newer and preserve the fine-grained store view"
+      ],
+      "must_not": ["(?:should|must|need to) clone (?:the )?(?:inner )?store", "<For> (?:cannot|does not|doesn't) track"],
+      "source": "stores.md:78-99"
+    },
+    {
+      "id": "B10",
+      "axis": "pattern",
+      "title": "lazy SSR identity and hydration",
+      "routed_reference": "control-flow-and-dom.md",
+      "prompt": "An SSR app creates a lazy component from an `import.meta.glob` entry, so the `lazy()` callsite has no static `moduleUrl`. How does beta.17 hydrate it, how does the server find the asset identity, and what is `Lazy.moduleUrl` during that SSR request? Contrast that getter with a callsite that does supply `moduleUrl`. What happens if no identity exists at all?",
+      "must_include": [
+        "the client matches preloaded lazy modules positionally by HYDRATION ID, not module identity, so a callsite without moduleUrl can hydrate",
+        "the server waits for the import and uses the module's bundler-injected $$moduleUrl export when the callsite has no moduleUrl",
+        "for this glob callsite Lazy.moduleUrl remains undefined even after $$moduleUrl is loaded; $$moduleUrl is used only for deferred asset registration and does not populate the component getter",
+        "manifest resolution, modulepreload-on-access, and the raw-specifier fallback apply to Lazy.moduleUrl only when the lazy() callsite supplied moduleUrl",
+        "if neither moduleUrl nor $$moduleUrl exists, SSR still renders and WARNS about a late client load instead of throwing"
+      ],
+      "must_not": ["moduleUrl is required (?:on|at) (?:the )?client", "throws? (?:an error )?(?:when|if) (?:there is )?no (?:moduleUrl|identity)"],
+      "source": "control-flow-and-dom.md:118-145"
     },
     {
       "id": "C1",
@@ -240,7 +326,7 @@
         "do NOT destructure props in the parameter list and do NOT read props at the top level of the body — it captures once, goes stale, and warns STRICT_READ_UNTRACKED"
       ],
       "must_not": ["function\\s+\\w+\\s*\\(\\s*\\{\\s*title", "const\\s*\\{\\s*title\\s*\\}\\s*=\\s*props"],
-      "source": "reactivity.md:115-128; SKILL.md rule 4"
+      "source": "reactivity.md:121-134; SKILL.md rule 4"
     },
     {
       "id": "C2",
@@ -266,7 +352,7 @@
         "the child reads props.value inside JSX (no destructuring); this keeps reactivity because the compiled JSX prop is a getter that re-runs count() in the child's tracking scope"
       ],
       "must_not": ["value=\\{count\\}(?!\\()", "<Counter\\s+value=\\{count\\}\\s", "function\\s+Counter\\s*\\(\\s*\\{"],
-      "source": "reactivity.md:130-156; SKILL.md rule 5; reviewer SKILL.md"
+      "source": "reactivity.md:136-178; SKILL.md rule 5; reviewer SKILL.md"
     },
     {
       "id": "C4",
@@ -319,7 +405,7 @@
         "onSettled is a leaf owner: you cannot create reactive primitives or call onCleanup inside it — return a cleanup function instead"
       ],
       "must_not": ["onMount", "onCleanup\\s*\\("],
-      "source": "reactivity.md:174-201; migration-map.md:30"
+      "source": "reactivity.md:180-210; migration-map.md:30"
     },
     {
       "id": "D3",
@@ -333,7 +419,7 @@
         "classList is gone — use the object/array form of the class prop: class={{ active: isActive() }}"
       ],
       "must_not": ["solid-js/web", "solid-js/store", "classList="],
-      "source": "migration-map.md:11-18, 34; control-flow-and-dom.md:135-141"
+      "source": "migration-map.md:11-18, 34; control-flow-and-dom.md:161-167"
     },
     {
       "id": "D4",
@@ -346,7 +432,7 @@
         "the replacement is createProjection (a readonly derived store whose derive fn mutates a draft), which updates fine-grained without notifying the whole collection"
       ],
       "must_not": ["createSelector\\s*\\(", "use createSelector"],
-      "source": "stores.md:47-71; migration-map.md:35"
+      "source": "stores.md:47-76; migration-map.md:35"
     }
   ]
 }

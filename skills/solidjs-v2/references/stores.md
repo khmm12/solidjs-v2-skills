@@ -1,6 +1,6 @@
 # Stores: drafts, projections, helpers
 
-Verified against solid-js@2.0.0-beta.16 (published typings) and `next@a06d79c3` sources/tests.
+Verified against solid-js@2.0.0-beta.17 (published typings) and `next@a51cac19` sources/tests.
 All store APIs are exported from `solid-js` (the `solid-js/store` subpath is gone).
 
 ## Draft-first setters (produce is the default)
@@ -74,6 +74,29 @@ const users = createProjection(async () => api.listUsers(), [], { key: "id" });
 const [cache, setCache] = createStore(draft => { draft.x = compute(); }, { x: 0 });
 setCache(s => { s.override = true; });
 ```
+
+### Store-in-store views track structure
+
+A derived store may return or contain another store. Structural consumers of
+that wrapper — `<For>`/`mapArray`, `Object.keys`, `snapshot`, and `deep` — track
+through to the wrapped store in beta.17. Adds/deletes and `reconcile()` on the
+inner store therefore invalidate the outer view; direct property reads and
+enumeration stay consistent:
+
+```tsx
+const [items] = createOptimisticStore(() => api.list(), []);
+const [view] = createOptimisticStore<{ items: readonly Item[] }>(
+  () => ({ items }),
+  { items: [] }
+);
+
+<For each={view.items}>{item => <Row item={item} />}</For>
+```
+
+Before beta.17, a structural consumer could stay stale through this wrapper
+(for example, an optimistic row survived in `<For>` after refreshed data had
+already reached direct property reads). Do not work around it by cloning the
+inner store; update to beta.17 or newer.
 
 Function-form `createSignal` (the "writable memo") completes the picture:
 

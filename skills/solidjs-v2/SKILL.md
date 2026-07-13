@@ -1,6 +1,6 @@
 ---
 name: solidjs-v2
-description: Write and edit SolidJS 2.0 code (solid-js 2.x / next / beta). Use when implementing components, reactivity, async data, stores, or DOM code in a project that depends on solid-js 2.x or @solidjs/web. Not for Solid 1.x projects and not for migrating 1.x code (see solidjs-v2-migration).
+description: Answer SolidJS 2.0 API and beta-behavior questions, and write or edit SolidJS 2.0 code (solid-js 2.x / next / beta). Use for questions or implementation involving components, signals/effects/batching, async data/generators/actions and Loading, removed beta APIs, stores and nested store views, lazy SSR/hydration, or DOM code for solid-js 2.x or @solidjs/web. Not for Solid 1.x projects and not for migrating 1.x code (see solidjs-v2-migration).
 ---
 
 # SolidJS 2.0
@@ -34,8 +34,9 @@ Betas drift: when docs and the installed package disagree, trust the typings in
    Compute tracks and returns a value; apply does side effects (untracked) and
    may return a cleanup. The 1.x single-callback form throws. `on()`,
    `createComputed`, initial-value args: all gone.
-3. **Never write signals/stores inside a reactive scope** (memo, compute,
-   component body) — throws in dev. Write in event handlers, actions, or
+3. **Never write signals/stores or invoke an action inside a reactive scope**
+   (memo, compute, component body) — throws in dev. Define actions there if
+   useful, but invoke/write from event handlers, effect callbacks, actions, or
    `onSettled`. Derive instead of writing back.
 4. **No top-level reactive reads in component bodies** and no destructured
    props — warns, value goes stale. Read via `props.x` inside JSX / memos /
@@ -72,10 +73,10 @@ Read the file matching the task before writing code in that area:
 | Task touches | Read |
 |---|---|
 | Quick API lookup, import list, full 1.x→2.0 footgun list | `references/cheatsheet.md` (official) |
-| Signals, memos, effects, batching/flush, lifecycle, ownership, dev diagnostics | `references/reactivity.md` |
-| Data fetching, Loading/Errored, isPending/latest/resolve/refresh, action(), optimistic UI | `references/async-and-actions.md` |
-| createStore, reconcile, projections, snapshot/deep, merge/omit, storePath | `references/stores.md` |
-| For/Repeat/Show/Switch/Reveal, dynamic components, class/attributes/events/refs/directives, render/SSR entries | `references/control-flow-and-dom.md` |
+| Signals, memos, split/render effects and paint timing, `createReaction`, batching/flush, lifecycle, ownership, dev diagnostics | `references/reactivity.md` |
+| Data fetching, async iterator completion, Loading/Errored, isPending/latest/resolve/refresh, removed `isRefreshing`, action call scope/errors, optimistic UI | `references/async-and-actions.md` |
+| createStore, reconcile, projections, nested store-view structural tracking, snapshot/deep, merge/omit, storePath | `references/stores.md` |
+| For/Repeat/Show/Switch/Reveal, dynamic/lazy components, lazy SSR/hydration identity, class/attributes/events/refs/directives, render entries | `references/control-flow-and-dom.md` |
 | tsconfig, JSX types, import paths, Context typing, test setup | `references/typescript-setup.md` |
 | Composed patterns: SWR query, optimistic mutations, selection projections, global state, demand-driven resources | `references/patterns.md` |
 | Naming a primitive/composable (`create*` vs `use*`), cross-cutting conventions | `references/conventions.md` |

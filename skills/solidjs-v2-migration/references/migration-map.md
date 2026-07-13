@@ -1,8 +1,8 @@
 # Solid 1.x → 2.0 migration map
 
 Full rename/removal table with before/after recipes. Source: official
-MIGRATION.md + RFCs at solidjs/solid@next (a06d79c3), verified against
-solid-js@2.0.0-beta.16 typings.
+MIGRATION.md + RFCs at solidjs/solid@next (a51cac19), verified against
+solid-js@2.0.0-beta.17 typings.
 
 ## Import paths (mechanical)
 
@@ -134,6 +134,11 @@ const addTodo = action(function* (todo) {
 });
 ```
 
+Define actions during component setup if convenient, but invoke them only from
+event handlers, effect callbacks, `onSettled`, or another imperative scope.
+Calling an action directly in a component body or computation throws in dev
+(`ACTION_CALLED_IN_OWNED_SCOPE`, beta.17) and can livelock the tracked scope.
+
 `startTransition`/`useTransition` → delete; transitions are built-in. Pending
 UI: `isPending` / `<Loading on={...}>` — but an active optimistic write **masks
 `isPending` store-wide** for its whole transition, so drive *this* mutation's
@@ -248,3 +253,5 @@ explicit default or try/catch.
   everywhere — expect a wave of `STRICT_READ_UNTRACKED` on first dev run.
 - **Writes in scope throw**: 1.x "effect that sets a signal" patterns crash —
   rewrite as derivations or move writes to handlers.
+- **Action calls in scope throw**: move action invocation out of component
+  bodies/computations and into handlers, effect callbacks, or `onSettled`.

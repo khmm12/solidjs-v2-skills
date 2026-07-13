@@ -1,7 +1,7 @@
 # Control flow and DOM
 
-Verified against solid-js@2.0.0-beta.16 / @solidjs/web@2.0.0-beta.16 typings,
-`next@a06d79c3` sources and `packages/solid-web/test/flow.type-tests.tsx`.
+Verified against solid-js@2.0.0-beta.17 / @solidjs/web@2.0.0-beta.17 typings,
+`next@a51cac19` sources and `packages/solid-web/test/flow.type-tests.tsx`.
 Control-flow components live in `solid-js`; `render`/`hydrate`/`Portal`/
 `Dynamic`/`dynamic` live in `@solidjs/web`.
 
@@ -114,6 +114,35 @@ return <Active value={value()} />;
 `createDynamic(source, props)` is gone — use `<Dynamic>` or
 `createComponent(dynamic(source), props)`. One `dynamic(...)` source is shared
 across all mounted instances.
+
+### `lazy()` in SSR and hydration
+
+`lazy(loader, moduleUrl?)` lives in `solid-js`. The optional callsite module
+specifier is normally injected by the bundler and is exposed as
+`Lazy.moduleUrl` for island and asset tooling.
+
+```tsx
+const About = lazy(() => import("./About"));
+const moduleRef: string | undefined = About.moduleUrl;
+```
+
+In beta.17, hydration matches preloaded lazy modules **positionally by
+hydration id**, not by module identity, so a client callsite without
+`moduleUrl` (including `import.meta.glob`) hydrates correctly. On the server:
+
+- If the callsite has no `moduleUrl`, Solid waits for the import and uses the
+  bundler-injected `$$moduleUrl` export for deferred asset registration. This
+  does **not** populate the component getter: `Lazy.moduleUrl` stays `undefined`
+  for that glob-style callsite. If neither identity exists, SSR still renders
+  and warns that the client will load the module late; it no longer throws.
+- When the callsite did supply `moduleUrl`, reading `Lazy.moduleUrl` during an
+  SSR request resolves it through the asset manifest to the client-loadable
+  entry URL and registers modulepreload hints. Outside a request it is the raw
+  callsite specifier; when the manifest misses, it also falls back to that raw
+  specifier.
+- A lazy component inside `<NoHydration>` still renders on the server. Reading
+  its resolved `moduleUrl` is the preload signal when island markup will load
+  it separately.
 
 ## DOM: attributes, class, events, refs
 

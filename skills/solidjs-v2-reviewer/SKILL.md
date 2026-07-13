@@ -55,6 +55,7 @@ Run these over the changed files; each hit needs a fix or a justification.
 | `createEffect(fn, 0)` / `createMemo(fn, 0)` initial values | 🔴 wrong arg | options object; `prev` default parameter |
 | Setter then immediate read of same signal/DOM | 🔴 stale read | `flush()` or restructure |
 | Signal/store write inside memo/compute/component body | 🔴 throws in dev | derive, or move write to handler/action |
+| `actionFn()` invoked inside memo/compute/component body | 🔴 dev error (`ACTION_CALLED_IN_OWNED_SCOPE`, beta.17); may livelock in prod | invoke from handler/effect callback/`onSettled` |
 | `ownedWrite: true` on app state | 🟡 escape-hatch abuse | derive instead; ownedWrite is for internal flags |
 | Top-level `const x = props.x` / store read in component body | 🟡 warns, stale | read in JSX/memo; `untrack` if deliberate |
 | `onCleanup` inside `onSettled`/`createTrackedEffect` | 🔴 throws | return cleanup |
@@ -80,6 +81,9 @@ Run these over the changed files; each hit needs a fix or a justification.
 - **Mutation shape**: server writes wrapped in `action()` with optimistic
   state and a final `refresh()`? Ad-hoc async handlers flipping flags are the
   1.x smell in new clothes.
+- **Action call site**: an action may be defined in a component, but is it
+  invoked only from an imperative scope? A component-body/computation call is
+  a transaction-starting write and throws in beta.17 dev mode.
 - **Optimistic spinner off `isPending`**: a "Saving…" indicator driven by
   `isPending` on data the same action just wrote optimistically can never show —
   an active optimistic write masks `isPending` store-wide (beta.16). The flag

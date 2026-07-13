@@ -21,40 +21,64 @@ The v1 and react axes matter most: models were trained on a corpus with **no
 Solid 2.0**, so their default is React or Solid 1.x. The eval asks whether the
 skill overrides that.
 
+## Providers
+
+The runner supports two answer backends through `--provider`:
+
+- **`claude`** (default) — calls `claude -p`. The grader is also Claude
+  (`--grader sonnet` by default).
+- **`codex`** — calls `codex exec` with an ephemeral session, a read-only
+  sandbox, and JSONL output. Every run gets a fresh temporary `CODEX_HOME`
+  containing only a copy of the current authentication file—no user config,
+  `AGENTS.md`, skills, plugins, MCP servers, memories, or history. The answer
+  model is selected with the same `--models` flag. Grading still uses Claude,
+  so answer-provider comparisons share one judge.
+
+Runs use one answer provider at a time. Keeping provider in the raw result and
+summary avoids ambiguous model names and makes separate runs easy to compare.
+
 ## The three conditions (this is the design decision)
 
 Each question is asked verbatim (same prompt, Solid version stated inline) under:
 
-- **`base`** — bare model, no skill. The control.
-- **`deployed`** — `claude -p --plugin-dir <repo> --allowedTools Read,Glob,Grep`.
-  The model auto-triggers and routes the real skill, reading references with its
-  own tools. **This is the actual product** and the headline "со skill" number:
-  it measures trigger + routing + content together.
+- **`base`** — bare model, no skill. The control. Codex tool activity invalidates
+  and excludes the cell rather than letting a contaminated answer affect rates.
+- **`deployed`** — provider-specific tool retrieval:
+  - Claude receives `--plugin-dir <repo>` and must auto-trigger and route the
+    real skill. This is the actual Claude plugin and measures trigger + routing
+    + content together.
+  - Codex runs without personal config or rules and is explicitly pointed at the
+    repository's `SKILL.md`; it must read the skill, follow its routing table,
+    and open the relevant reference with tools. This tests the same shipped
+    skill files and agentic routing, but it is **explicit retrieval**, not a
+    measurement of Codex automatic skill discovery.
 - **`content`** — `SKILL.md` + the *one* topically-routed reference injected as a
-  system prompt. Simulates perfect routing and isolates **content quality** from
+  system prompt for Claude or directly into the isolated prompt context for
+  Codex. It simulates perfect routing and isolates **content quality** from
   trigger/routing reliability. This is the iteration diagnostic — when an edit
   changes a score here, it's the words that changed it, not luck in routing.
 
-We deliberately do **not** inject all seven references at once: that reports a
+We deliberately do **not** inject all references at once: that reports a
 number for a config nobody ships and multiplies cross-contamination between
 references (the failure mode behind the original Q5 regression).
 
-`deployed` is the truth about the shipped skill; `content` is the microscope for
-editing it. Read them together: if `content` passes but `deployed` fails, the
-content is right but the skill isn't triggering/routing — a description problem,
-not a content problem.
+For Claude, `deployed` is the truth about the shipped plugin; for Codex, it is
+the explicit agentic-retrieval condition. `content` is the microscope for
+editing the shared skill files. Read them together: if `content` passes but
+`deployed` fails, the content is right but retrieval/routing is not.
 
 ## Two axes, measured separately: delivery vs quality
 
 These are different failures and must not be averaged into one number:
 
-- **Delivery (auto-attachment)** — does the model actually open the skill? In
-  `deployed` mode the skill is read via tools, so **>1 turn = the skill was
-  consulted**; a 1-turn answer means the model replied from its priors without
-  ever opening it. This is reported as a **trigger rate** and needs **no grading**
-  — the signal is already in the response metadata. Run it with `--no-grade` and
-  it's nearly free. (Observed: weak models like haiku skip the skill on questions
-  that don't name an API verbatim — trigger rate well under 100%.)
+- **Delivery / retrieval** — does the model actually open the skill? For Claude,
+  **>1 turn** in `deployed` mode is the auto-trigger proxy. For Codex, retrieval
+  is successful only when the skill path appears in a completed tool item;
+  unrelated tool activity does not count. The summary labels these differently
+  because they are not the same measurement. Both need no
+  grading; run `--no-grade` for a cheap delivery-only check. (Observed: weak
+  Claude models like haiku can skip the skill on questions that do not name an
+  API verbatim.)
 - **Quality (content)** — when the skill IS in context (`content` mode, perfect
   routing), are the answers right? This is the graded number.
 
@@ -100,16 +124,24 @@ node evals/run.mjs --conditions base,content,deployed --n 3   # add content mode
 node evals/run.mjs --questions axis:react                     # one axis
 node evals/run.mjs --questions B1,B2 --conditions content     # iterate on one edit (cheapest)
 node evals/run.mjs --conditions deployed --no-grade           # delivery/trigger rate only (near-free)
+node evals/run.mjs --provider codex --models gpt-5.6-luna --quick
+node evals/run.mjs --provider codex --models gpt-5.6-luna --questions A9,A10 --conditions content
 ```
 
-Flags: `--models`, `--conditions`, `--n`, `--grader`, `--concurrency`,
+Flags: `--provider` (`claude` or `codex`), `--models`, `--conditions`, `--n`, `--grader`, `--concurrency`,
 `--questions` (csv ids or `axis:<name>`), `--quick`, `--no-grade`.
 
 Output: a markdown summary (delivery trigger rate + quality pass-rate matrix +
 per-axis + failure list) and a raw JSON. `results/` is git-ignored — it's run
-output, not a committed artifact. Every claude call runs in a neutral empty cwd so
-`base`/`content` can't read the repo's own reference files off disk (that would
-contaminate the control).
+output, not a committed artifact. Every answer call runs in a neutral empty cwd
+so `base`/`content` cannot read the repo's own reference files off disk (that
+would contaminate the control). Codex additionally disables user config and
+rules for all three conditions. Only `auth.json` is copied into its temporary
+`CODEX_HOME`. `base`/`content` explicitly prohibit tool or web use, and the
+runner rejects any cell where JSONL reports a non-reasoning tool item—including
+web search or an unknown future item type. Rejected cells are excluded from pass
+rates and make the run exit non-zero. Codex `deployed` permits local read-only
+commands but prohibits web and external sources.
 
 ## Token economy (what costs what, and how to not overpay)
 

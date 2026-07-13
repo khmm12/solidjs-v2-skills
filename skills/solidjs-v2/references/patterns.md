@@ -1,5 +1,7 @@
 # Patterns: composing Solid 2.0 primitives
 
+Verified against solid-js@2.0.0-beta.17 (published typings) and `next@a51cac19` sources/tests.
+
 Field-tested compositions on top of the core APIs. Each pattern names the
 primitives it leans on; signatures are covered in the sibling reference files.
 
@@ -293,7 +295,7 @@ function handleSubmit() {
 Scope it tightly (handlers, tests); sprinkling `flush()` to "fix" stale reads
 usually means a read belongs in JSX or an effect instead.
 
-## Known beta gotchas (observed at 2.0.0-beta.16)
+## Known beta gotchas (observed at 2.0.0-beta.17)
 
 - `Portal` from `@solidjs/web` was **rewritten in beta.15** (owner-parented
   insert via the new `host` option, no mount `Proxy`) — this resolves the
@@ -305,7 +307,7 @@ usually means a read belongs in JSX or an effect instead.
   betas churn the public API freely: `isRefreshing` was a public `solid-js`
   export from beta.0 through beta.14 (and written up in the RFC docs), then
   **removed in beta.15** — commit `52255dc` cut the code, typings, and docs
-  together (as of beta.16 it is gone from `@solidjs/signals` internals too).
+  together (as of beta.17 it is gone from `@solidjs/signals` internals too).
   When docs and `node_modules` disagree, trust `node_modules`; before building
   on a beta-only API, check the repo's `.changeset/` directory for its
   scheduled fate.

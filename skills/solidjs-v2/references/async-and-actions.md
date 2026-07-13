@@ -1,6 +1,6 @@
 # Async data, transitions, actions, optimistic UI
 
-Verified against solid-js@2.0.0-beta.16 (published typings) and `next@a06d79c3` sources/tests.
+Verified against solid-js@2.0.0-beta.17 (published typings) and `next@a51cac19` sources/tests.
 
 ## Async lives in computations — there is no `createResource`
 
@@ -93,8 +93,9 @@ Symptoms when this is wrong:
 
 - `onCleanup` after the first `await`/`yield` → `NO_OWNER_CLEANUP`; cleanup silently
   skipped, resource leaks.
-- A generator that `return`s without ever `yield`ing → the memo never commits a value
-  → its `<Loading>` fallback shows **forever**.
+- An async iterator that completes without yielding settles to `undefined`
+  (fixed in beta.17), so `<Loading>` releases. A `return value` is still
+  discarded — emit a final value with `yield`, not `return`.
 - Subscribing to a socket/emitter with no up-front `onCleanup` → leaks on every re-run
   and on route change. `try/finally` alone does **not** save you.
 
@@ -138,7 +139,7 @@ currently pending.
 > `isRefreshing()` is **gone as of beta.15** — it was a public `solid-js`
 > export from beta.0 through beta.14 (and written up in the RFC docs), removed
 > in beta.15: commit `52255dc` cut the code, typings, and docs together
-> (`@solidjs/signals` still defines it internally, but don't import it). There is
+> (it is gone from `@solidjs/signals` internals too). There is
 > no public replacement: model refresh/retry intent with actions + optimistic
 > state, observe readiness via `<Loading>`/`isPending`, and detect a `refresh()`
 > re-run inside a compute by carrying the source key in the yielded state and
@@ -171,6 +172,14 @@ scheduling concept; multiple can be in flight. The user-facing surface is
 `action()` wraps a **generator or async generator** and returns an async
 function. Writes between yields are batched into the action's transition.
 
+Defining an action in a component is fine; **calling it synchronously from an
+owned scope is not**. A call in a component body, memo, or effect compute throws
+in dev (`ACTION_CALLED_IN_OWNED_SCOPE`, beta.17). Starting the transaction there
+can livelock when the scope tracks state that the action later writes: each
+write retriggers the scope and starts a replacement transition before the value
+commits. Invoke actions from event handlers, effect apply/error callbacks,
+`onSettled`/tracked effects, or other imperative scopes.
+
 ```ts
 const [todos, setOptimisticTodos] = createOptimisticStore(() => api.getTodos(), []);
 
@@ -197,7 +206,9 @@ that's `isPending`'s job.
 An **uncaught error** in an async-generator action rejects the returned promise
 and completes the transition — so optimistic writes revert and the caller can
 `.catch`. It no longer freezes the thread (a beta.16 fix). A `try`/`catch`
-around a `yield`/`await` still handles an awaited rejection locally.
+around a `yield`/`await` still handles an awaited rejection locally. As of
+beta.17, falsy throws (`undefined`, `null`, `0`, `""`, `false`) reject with that
+exact value too; never infer action success from error truthiness.
 
 ## Optimistic primitives
 
@@ -263,3 +274,16 @@ Async errors propagate through the reactive graph and are caught structurally:
 Programmatic: `createEffect(compute, { effect, error })`. There is no
 `resource.error`, `onError`, or `catchError`; boundaries heal automatically
 (no `resetErrorBoundaries`).
+
+Error identity is exact, including falsy values: `Promise.reject(undefined)`
+reaches `err()` / the effect `error` arm as `undefined`, `reject(null)` as
+`null`, and a custom error as the same object (`instanceof` works). Do not test
+whether an error exists with `if (err())`; branch by the value you expect.
+
+| Origin | What user code observes |
+|---|---|
+| async source `Promise.reject(null)` | `err()` / effect `error` receives `null` |
+| action generator `throw undefined` | the action's returned Promise **rejects with `undefined`** (it does not resolve) |
+
+Nested boundaries compose by status dimension: an inner `<Errored>` catches its
+content even when a `<Loading>` sits between it and an outer `<Errored>`.
