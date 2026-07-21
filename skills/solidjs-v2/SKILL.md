@@ -1,6 +1,6 @@
 ---
 name: solidjs-v2
-description: Answer SolidJS 2.0 API and beta-behavior questions, and write or edit SolidJS 2.0 code (solid-js 2.x / next / beta). Use for questions or implementation involving components, signals/effects/batching, async data/generators/actions and Loading, removed beta APIs, stores and nested store views, lazy SSR/hydration, or DOM code for solid-js 2.x or @solidjs/web. Not for Solid 1.x projects and not for migrating 1.x code (see solidjs-v2-migration).
+description: Answer SolidJS 2.0 API and beta-behavior questions, and write or edit SolidJS 2.0 code (solid-js 2.x / next / beta). Use for questions or implementation involving components, signals/effects/batching, async data/generators/actions and Loading, removed beta APIs, stores and nested store views, lazy SSR/hydration, server functions ("use server"), or DOM code for solid-js 2.x or @solidjs/web. Not for Solid 1.x projects and not for migrating 1.x code (see solidjs-v2-migration).
 ---
 
 # SolidJS 2.0
@@ -51,7 +51,9 @@ Betas drift: when docs and the installed package disagree, trust the typings in
    every consumer to call a function.
 6. **Async is just a computation**: `const user = createMemo(() => fetchUser(id()))`
    — no `createResource`. Wrap consumers in `<Loading fallback={...}>`;
-   errors go to `<Errored>`. Revalidation indicators: `isPending(() => user())`.
+   errors go to `<Errored>`. In-flight-change indicators: `isPending(() => user())`
+   — fires for changed inputs and `affects()` declarations; a bare `refresh()`
+   is silent.
 7. **Store setters take a draft**: `setStore(s => { s.a.b = 1; })` (produce is
    the default). Store APIs (`createStore`, `reconcile`, `snapshot`…) are
    exported from `solid-js` — `solid-js/store` does not exist.
@@ -80,6 +82,7 @@ Read the file matching the task before writing code in that area:
 | tsconfig, JSX types, import paths, Context typing, test setup | `references/typescript-setup.md` |
 | Composed patterns: SWR query, optimistic mutations, selection projections, global state, demand-driven resources | `references/patterns.md` |
 | Naming a primitive/composable (`create*` vs `use*`), cross-cutting conventions | `references/conventions.md` |
+| `"use server"` directive, server-function privacy/DCE, respond/redirect/reload, GET/withMeta, prepareRequest, single-flight, no-JS, getRequestEvent | `references/server-functions.md` |
 
 ## Failure modes
 

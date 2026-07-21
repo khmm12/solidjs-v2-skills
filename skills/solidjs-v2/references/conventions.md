@@ -1,6 +1,6 @@
 # Conventions
 
-Verified against solid-js@2.0.0-beta.17 (published typings) and `next@a51cac19` sources.
+Verified against solid-js@2.0.0-beta.21 (published typings) and `next@2bf022eb` sources.
 
 ## Naming: `create*` vs `use*`
 

@@ -1,6 +1,6 @@
 # Stores: drafts, projections, helpers
 
-Verified against solid-js@2.0.0-beta.17 (published typings) and `next@a51cac19` sources/tests.
+Verified against solid-js@2.0.0-beta.21 (published typings) and `next@2bf022eb` sources/tests.
 All store APIs are exported from `solid-js` (the `solid-js/store` subpath is gone).
 
 ## Draft-first setters (produce is the default)
@@ -130,6 +130,8 @@ references where nothing changed).
   `async-and-actions.md`).
 - A deleted trailing slot (`delete arr[i]`) stays a hole: `length` is preserved
   and the hole serializes as `null` — the copy is not truncated.
+- Enumerable symbol-keyed properties survive both `snapshot` and `deep`
+  (top-level and nested), not just string keys.
 
 ## `merge` / `omit` (replace `mergeProps` / `splitProps`)
 

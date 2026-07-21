@@ -1,4 +1,4 @@
-<!-- Verbatim copy of packages/solid/CHEATSHEET.md from github.com/solidjs/solid@next (commit a51cac19, solid-js@2.0.0-beta.17). Do not edit; refresh from upstream when the beta advances. -->
+<!-- Verbatim copy of packages/solid/CHEATSHEET.md from github.com/solidjs/solid@next (commit 2bf022eb, solid-js@2.0.0-beta.21). Do not edit; refresh from upstream when the beta advances. -->
 
 # Solid 2.0 — Cheatsheet
 
@@ -36,6 +36,7 @@ import {
   isPending,
   latest,
   refresh,
+  affects,
   untrack,
   flush,
   onSettled,
@@ -218,15 +219,20 @@ const rest = omit(props, "class", "style"); // replaces splitProps
 const user = createMemo(() => fetchUser(id()));
 // Reading user() is not ready at first; wrap in <Loading>.
 
-// Pending indicator for this async read; place under the Loading boundary that owns it.
-<Loading fallback={<Spinner />}>{isPending(() => user()) ? "Refreshing..." : user()}</Loading>;
+// True while a value CHANGE is in flight for this read (e.g. id() changed and
+// the refetch hasn't landed). Place under the Loading boundary that owns it.
+<Loading fallback={<Spinner />}>{isPending(() => user()) ? "Updating..." : user()}</Loading>;
 // isPending can live outside Loading when it only reads upstream state that cannot be not ready.
 
 // Peek at the in-flight value during a transition
 latest(id);
 
-// Force recompute of a derived read after a server write
+// Force recompute of a derived read after a server write.
 // Action: call from handlers/effects/actions, not pure reads.
+// A bare refresh() re-asks the SAME question — it is quiet (isPending stays
+// false; the fresh value reveals silently). To make a reload read as pending,
+// declare it:
+affects(user);
 refresh(user);
 ```
 
@@ -240,16 +246,26 @@ const [todos, setOptimisticTodos] = createOptimisticStore(() => api.list(), []);
 const addTodo = action(function* (todo) {
   setOptimisticTodos(s => {
     s.push(todo);
-  }); // optimistic write
+  }); // optimistic write — shows the expected value; never reads as pending itself
   yield api.add(todo); // async work
-  refresh(todos); // reconcile with source of truth
+  refresh(todos); // reconcile with source of truth (quiet — same question)
+});
+
+// Declare data the in-flight work WILL change (reads as pending until settle):
+const rename = action(function* (todo, text) {
+  setOptimisticTodos(() => {
+    todo.text = text;
+  });
+  affects(todo, "updatedAt"); // server changes this slot too — pend it
+  yield api.rename(todo.id, text);
+  refresh(todos);
 });
 
 // Optimistic signal
 const [name, setName] = createOptimistic("Alice");
 ```
 
-Optimistic writes revert when the transition completes.
+Optimistic writes revert when the transition completes. Division of labor: optimistic writes _show_ the expected value, `affects` _pends_ data you know is changing but can't show yet, and process affordances ("saving…") are a co-written `createOptimistic(false)` flag — not `isPending`.
 
 ---
 
@@ -633,7 +649,8 @@ If your training data is 1.x, these are the corrections. **Read this before gene
 - **Stores: setters take a draft callback** — mutate the draft in place by default. Returning a new value is shallow (array index-replace, object top-level diff); reach for it for filter/remove. Keyed reconcile is a _projection-fn_ feature, not a setter feature.
 - **`undefined` is a real value in `merge`** — it overrides rather than "skip this key".
 - **Async lives in computations** — return a Promise/AsyncIterable from `createMemo`/`createStore(fn)`/`createProjection`. Pending reads participate in `<Loading>`.
-- **`Loading` covers unresolved branches** — once content has rendered, revalidation keeps it visible. Use `isPending(() => x())` for pending indicators or render guards; it reads `x` and participates in Loading like that read. Use `<Loading on={key}>` to re-show fallback on key changes.
+- **`Loading` covers unresolved branches** — once content has rendered, revalidation keeps it visible. Use `isPending(() => x())` for in-flight-change indicators or render guards; it reads `x` and participates in Loading like that read. Use `<Loading on={key}>` to re-show fallback on key changes.
+- **`isPending` ≠ 1.x `.loading`** — it fires while a value _change_ is in flight (an input changed, or `affects()` declared one), not for every fetch. A bare `refresh()`/poll re-asks the same question and is silent. For a reload that should read as pending: `affects(x); refresh(x)`. For a "saving…" affordance: a co-written optimistic flag.
 - **No `Suspense.Provider` or single error path** — async errors flow to `<Errored>` (or effect `error`); no inline `resource.error` branching.
 - **`createRoot` is owned by parent by default** — disposed when parent disposes. To detach: `runWithOwner(null, fn)`.
 - **Refs are functions** — `ref={el => ...}`. No `useRef`-style ref objects. Compose with arrays: `ref={[a, b]}`.

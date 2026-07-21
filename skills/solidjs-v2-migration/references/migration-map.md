@@ -1,8 +1,8 @@
 # Solid 1.x → 2.0 migration map
 
 Full rename/removal table with before/after recipes. Source: official
-MIGRATION.md + RFCs at solidjs/solid@next (a51cac19), verified against
-solid-js@2.0.0-beta.17 typings.
+MIGRATION.md + RFCs at solidjs/solid@next (2bf022eb), verified against
+solid-js@2.0.0-beta.21 typings.
 
 ## Import paths (mechanical)
 
@@ -109,9 +109,9 @@ const user = createMemo(() => fetchUser(id()));                // 2.0
 
 | Resource feature | 2.0 |
 |---|---|
-| `user.loading` | `<Loading>` boundary (initial) + `isPending(() => user())` (revalidation) |
+| `user.loading` | `<Loading>` boundary (initial render) + `isPending(() => user())` (revalidation) — but a bare `refresh(user)` is a **silent** same-question re-ask, it does not flip `isPending`; for a "loud" refetch declare it: `affects(user); refresh(user)`. For a "saving…" affordance during a mutation, use a co-written optimistic flag, not `isPending` (see `solidjs-v2` skill, async-and-actions.md → `isPending`/`affects()`) |
 | `user.error` + inline `<Show when={user.error}>` | `<Errored>` boundary (single error path) or effect `error` option |
-| `refetch()` | `refresh(user)` (from handlers/actions, not computations) |
+| `refetch()` | `refresh(user)` (from handlers/actions, not computations) — silent unless paired with `affects()` |
 | `mutate(fn)` | `createOptimisticStore` + `action` (see below) |
 
 Collections: prefer `createProjection(async () => api.list(), [], { key: "id" })`
@@ -140,10 +140,14 @@ Calling an action directly in a component body or computation throws in dev
 (`ACTION_CALLED_IN_OWNED_SCOPE`, beta.17) and can livelock the tracked scope.
 
 `startTransition`/`useTransition` → delete; transitions are built-in. Pending
-UI: `isPending` / `<Loading on={...}>` — but an active optimistic write **masks
-`isPending` store-wide** for its whole transition, so drive *this* mutation's
-"Saving…" state from a co-written flag in the data, not from `isPending` (see
-`solidjs-v2` skill, async-and-actions.md → Optimistic primitives).
+UI: `isPending` / `<Loading on={...}>` — but `isPending` is question-scoped:
+a bare `refresh()` after a mutation is a silent same-question re-ask (it
+never flips `isPending`), and an optimistic write is verdict-inert (it
+doesn't mask or decree anything, as of beta.21). So drive *this* mutation's
+"Saving…" state from a co-written flag in the data, not from `isPending`; if
+you want the reload itself to read as pending, declare it with
+`affects(target)` before the `refresh()` (see `solidjs-v2` skill,
+async-and-actions.md → `isPending` / `affects()` / Optimistic primitives).
 
 ### `onError` / `catchError` → structural
 

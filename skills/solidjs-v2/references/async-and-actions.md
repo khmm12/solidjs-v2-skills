@@ -1,6 +1,6 @@
 # Async data, transitions, actions, optimistic UI
 
-Verified against solid-js@2.0.0-beta.17 (published typings) and `next@a51cac19` sources/tests.
+Verified against solid-js@2.0.0-beta.21 (published typings) and `next@2bf022eb` sources/tests.
 
 ## Async lives in computations — there is no `createResource`
 
@@ -108,14 +108,19 @@ Symptoms when this is wrong:
   pending — for route/key-level transitions:
   `<Loading on={id()} fallback={<Spinner />}>...`
 
-## `isPending(fn)` — stale-while-revalidating
+## `isPending(fn)` — question-scoped pending (beta.21 re-ruling)
+
+One rule, re-derived from the ground up in beta.21 (changeset
+`question-scoped-pending-affects`, supersedes the old "optimistic mask"
+model): a read is pending **iff** a value change is in flight for it that
+hasn't *revealed* yet, or it carries a live `affects()` mark (below).
 
 `isPending` **performs the read** and reports whether anything it touched is
 currently pending.
 
 ```jsx
 <Loading fallback={<Spinner />}>
-  <Show when={isPending(() => users() || posts())}>refreshing…</Show>
+  <Show when={isPending(() => users() || posts())}>updating…</Show>
   <List users={users()} posts={posts()} />
 </Loading>
 ```
@@ -128,11 +133,91 @@ currently pending.
 - Guarding interactive controls:
   `<button disabled={isPending(user)}>Save</button>` under the boundary,
   with a disabled fallback for the initial path.
-- An **active optimistic override masks this**: while an optimistic write is
-  live on the source read (store-wide for a derived optimistic store), the
-  expression reads `false` even mid-refetch — by design (see *Optimistic
-  primitives*). Drive action "Saving…" affordances from co-written data, not
-  from here.
+
+**Same-question re-asks are silent; new questions pend monotonically.** A
+`refresh()`, a poll, or a confirming refetch after a mutation — none of which
+change the *tracked input* (id, query key) — reveal their fresh value without
+ever flipping `isPending` to `true`: the source you're showing still answers
+what's being asked, so the swap is quiet. A change to the tracked input
+itself (navigation changes `id()`) pends every read under that source
+monotonically until the new answer reveals — nothing can silence it early.
+To make an otherwise-quiet reload read as pending, declare it:
+`affects(user); refresh(user)` (see **`affects()`** below).
+
+Optimistic writes are **verdict-inert**: an active override displays the
+provisional value but decrees nothing — it does not read pending on its own
+slot, and (unlike beta.17–beta.20) it no longer masks anything else. The
+store-wide and per-node optimistic "isPending mask" from those betas is
+**removed** (changeset `question-scoped-pending-affects`: "The store-wide
+optimistic mask (A21) and node mask (A20) are removed"). A spinner driven by
+`isPending` next to an optimistic write now depends only on whether the
+confirming work is a quiet re-ask (`refresh()` alone → silent) or a declared
+one (`affects()` + `refresh()` → pending) — not on the presence of the
+optimistic write. Drive "Saving…" process affordances from co-written data
+(a flag in the optimistic write, or a dedicated `createOptimistic` boolean),
+never from `isPending` — see **`affects()` and division of labor** below.
+
+## `affects(target, key?)` — declare what's changing
+
+New in beta.21 (public `solid-js` export, verified in installed typings).
+`affects` declares that in-flight work will change the targeted data: the
+marked slot — and anything **derived** from it — reads pending
+(`isPending` → `true`) from the declaration until the surrounding transaction
+settles or reverts, exactly as if a real fetch for it were in flight. The
+marked value itself stays readable throughout (mark-only pending is
+**value-transparent** — reading it does not suspend and is not Suspense-like;
+it only shows up through `isPending`). It is additive-only: a mark can turn
+pending *on* for data the graph can't otherwise see changing; nothing can
+turn pending *off* while a real change is in flight.
+
+```ts
+declare function affects(target: Accessor<unknown> | Store<object>): void;
+declare function affects<T extends object>(target: Store<T>, key: keyof T): void;
+```
+
+Exactly one optional key per call — a three-argument call
+(`affects(state, "user", "name")`) is a **type error**: keys do not form a
+path (that reads like a 1.x store path but would mark two sibling slots).
+Mark several slots with several calls, or target the nested record directly.
+
+Targets:
+
+- `affects(store)` — every record **reachable from `store` at declaration
+  time** reads pending, including rows already captured by a `<For>` (a live
+  child proxy). Siblings are untouched. **Snapshot-at-declaration**: records
+  *added* to the store after the call are not covered.
+- `affects(record, "key")` — exactly the named slot of that record.
+- `affects(accessor)` — a plain signal/memo source accessor.
+
+The idiom for a "loud" reload — one that should read pending even though a
+bare `refresh()` alone would be silent:
+
+```ts
+const reload = action(function* () {
+  affects(todos);   // the whole store reads pending…
+  refresh(todos);   // …over this otherwise-quiet re-ask
+  yield api.done();
+});
+```
+
+Marking a single slot the server is about to update, alongside its own
+optimistic write:
+
+```ts
+const rename = action(function* (todo, text) {
+  setOptimisticTodos(() => { todo.text = text; });
+  affects(todo, "updatedAt");  // server will change this slot too
+  yield api.rename(todo.id, text);
+  refresh(todos);
+});
+```
+
+**Division of labor** for a mutation's UI: an optimistic write shows the
+*expected* value; `affects` pends data you know is changing but can't show a
+value for yet; a process affordance ("Saving…", a disabled reload button) is
+co-written state — an optimistic flag that reverts on its own at settle —
+never a verdict read off `isPending`. See *Optimistic primitives* below for
+why optimistic writes themselves are verdict-inert.
 
 ## `latest(fn)`, `resolve(fn)`, `refresh(target)`
 
@@ -203,6 +288,26 @@ Shape of a mutation: optimistic write → `yield`/`await` server work →
 `refresh(...)` derived reads. Don't use `refresh()` as a "refreshing" UI flag —
 that's `isPending`'s job.
 
+**`yield` is the only transaction-safe suspension point** (changeset
+`document-action-await-contract`, ruled behaves-as-designed). Writes made
+between an internal `await` and the *next* `yield` escape the action's
+transition — they land outside it, un-batched with the optimistic/reconcile
+writes around them. The safe pattern for a typed result: `await` for the
+value, then a **bare `yield`** to re-enter the transaction before writing:
+
+```ts
+const save = action(async function* (todo) {
+  setOptimisticTodos(s => { s.push(todo); });
+  const res = await api.addTodo(todo); // await: fine for the read, not for a write after it
+  yield;                               // re-enters the transaction
+  refresh(todos);                      // now transaction-safe
+  return res;
+});
+```
+
+Calling `flush()` inside an action body is out of contract — don't rely on
+its ordering there.
+
 An **uncaught error** in an async-generator action rejects the returned promise
 and completes the transition — so optimistic writes revert and the caller can
 `.catch`. It no longer freezes the thread (a beta.16 fix). A `try`/`catch`
@@ -228,27 +333,30 @@ const [todos2, setTodos2] = createOptimisticStore(() => api.getTodos(), [], { ke
 the second argument is the backing host object/array, `options.key` controls
 reconciliation of returned values.
 
-### An active override masks `isPending` — "certainty by decree"
+An optimistic write of literal `undefined` — a delete, a `filter()`-shaped
+removal, "set to no value" — is a fully supported override, not a special
+case: it reverts like any other write when the transition settles.
 
-An in-flight optimistic override reads `isPending === false` for its whole
-lifetime. Writing the value optimistically *declares* it the outcome, so the
-confirming refetch behind it is **not** reported as pending. Two edges:
+### Optimistic writes are verdict-inert (beta.21 re-ruling)
 
-- Only a **derived** optimistic (`createOptimistic(async …)` or a derived
-  `createOptimisticStore`) has a confirming fetch to mask — a plain
-  `createOptimistic("Alice")` was never pending from itself anyway.
-- For a derived optimistic **store** the mask is **store-wide**: while any
-  optimistic write on it is live, every leaf — written, untouched sibling, or
-  the firewall's own `refresh()` refetch — reads settled, in both `isPending`
-  forms. Only *effective* writes arm it: a no-op write (`s => s`, or
-  `s => ({ ...s })` replaying equal values) decrees nothing and leaves the
-  store pending as before. The mask lifts when the store's optimistic state
-  clears.
+As of beta.21 (changeset `question-scoped-pending-affects`), an optimistic
+write decrees nothing about `isPending`: it doesn't read pending on its own
+slot, and it no longer masks anything else. **The store-wide and per-node
+"certainty by decree" mask from beta.17–beta.20 is removed.**
 
-Consequence: an action's progress is **not** an `isPending` verdict on the
-optimistic data. Put "Saving…" affordances **in the data** — a co-written flag
-that rides along with the optimistic write, or a separate `createOptimistic`
-flag (which reverts on its own when the transition settles):
+If you're used to that mask: a `<Show when={isPending(() => todos())}>`
+spinner next to an `action` that does an optimistic write followed by a bare
+`refresh(todos)` still doesn't show a spinner in beta.21 — but the reason has
+changed. It's not because the optimistic write masked it; it's because a bare
+`refresh()` is a **quiet, same-question re-ask** (see *`isPending` —
+question-scoped pending* above) — it was never going to read as pending
+regardless of the optimistic write. If the reload should read as pending,
+declare it: `affects(todos); refresh(todos)`.
+
+The "Saving…" recipe is unchanged: put process affordances **in the data** —
+a co-written flag that rides along with the optimistic write, or a separate
+`createOptimistic` flag (which reverts on its own when the transition
+settles) — never read off `isPending`, mask or no mask:
 
 ```ts
 setOptimisticTodos(s => { s.push({ ...todo, pending: true }); }); // flag on the row

@@ -1,6 +1,6 @@
 # TypeScript, JSX, imports, project setup
 
-Verified against solid-js@2.0.0-beta.17 / @solidjs/web@2.0.0-beta.17 typings.
+Verified against solid-js@2.0.0-beta.21 / @solidjs/web@2.0.0-beta.21 typings.
 
 ## Import paths
 
@@ -15,6 +15,11 @@ Verified against solid-js@2.0.0-beta.17 / @solidjs/web@2.0.0-beta.17 typings.
 
 Upgrade `solid-js`, `@solidjs/web`, `babel-preset-solid` (and other
 `@solidjs/*` packages) together — betas move in lockstep.
+
+`@solidjs/web` also ships `./server-functions` (see
+`references/server-functions.md`), `./storage`, and `./serialization`
+subpaths for server-side concerns — not part of the renderer-neutral surface
+above.
 
 ## tsconfig for web apps
 
@@ -73,7 +78,7 @@ const [todos, { addTodo }] = useContext(TodosContext);
 primitive config (theme, locale). App-wide state doesn't need Context at all:
 a module-scope signal/store *is* a global.
 
-## Known typing traps (beta.17)
+## Known typing traps (beta.21)
 
 - `createSignal<T>(value)` with a generic `T` can fail the
   `Exclude<T, Function>` value overload — seed via the compute-fn overload:

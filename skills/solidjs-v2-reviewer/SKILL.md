@@ -34,7 +34,7 @@ Run these over the changed files; each hit needs a fix or a justification.
 | `produce\s*\(` in setters | 🟡 redundant | drafts are the default |
 | `setStore\s*\(\s*["']` (path-style first arg) | 🔴 wrong API | draft setter or `storePath(...)` |
 | `/\*@once\*/` | 🟡 ignored marker | reactive read / `defaultValue` / `untrack` |
-| `\.loading\b\|\.error\b` on async values | 🔴 no such props | `isPending(() => x())` / `<Errored>` |
+| `\.loading\b\|\.error\b` on async values | 🔴 no such props | `<Loading>`/`isPending(() => x())` for loading (bare `refresh()` is silent — pair with `affects()` for a loud reload) / `<Errored>` for error |
 
 ### React-isms
 
@@ -65,6 +65,7 @@ Run these over the changed files; each hit needs a fix or a justification.
 | Async read with no `<Loading>` ancestor | 🟡 root mount deferred | add boundary where fallback UI is wanted |
 | `async function*` memo over a socket/emitter/observable with no up-front `onCleanup` | 🔴 leaks on dispose/re-run | `onCleanup` (before the first `await`/`yield`) that cancels the source; `try/finally`/`.return()` can't unwind a parked generator |
 | `refresh()` called inside a computation | 🔴 throws | call from handlers/actions |
+| `serverFn.GET` property access, `serverFn.withOptions(` on a server function reference | 🔴 removed | `GET(fn)` wrapper at declaration site; `withMeta(fn, meta)` for metadata; `prepareRequest` for session-dynamic transport (see `solidjs-v2` skill, references/server-functions.md) |
 | `isRefreshing(` call (or imported from `solid-js`) | 🔴 removed in beta.15 | gone from `solid-js` exports; detect a refresh re-run by key comparison, or use `isPending`/`<Loading>` |
 | `<For>` callback shape vs keying mode mismatch (`item()` on keyed, `i()` on `keyed={false}`) | 🔴 type/runtime error | check the mode table |
 | Dynamic boolean `keyed={cond()}` with function children | 🟡 ambiguous shape | literal mode or key function |
@@ -83,12 +84,24 @@ Run these over the changed files; each hit needs a fix or a justification.
   1.x smell in new clothes.
 - **Action call site**: an action may be defined in a component, but is it
   invoked only from an imperative scope? A component-body/computation call is
-  a transaction-starting write and throws in beta.17 dev mode.
+  a transaction-starting write and throws in dev mode (since beta.17).
 - **Optimistic spinner off `isPending`**: a "Saving…" indicator driven by
   `isPending` on data the same action just wrote optimistically can never show —
-  an active optimistic write masks `isPending` store-wide (beta.16). The flag
-  belongs in the data (co-written `pending: true` or a separate
-  `createOptimistic(false)`).
+  not because the optimistic write masks it (that mask is removed as of
+  beta.21; optimistic writes are verdict-inert), but because a bare
+  `refresh()` after the write is a silent same-question re-ask and was never
+  going to flip `isPending`. The flag belongs in the data (co-written
+  `pending: true` or a separate `createOptimistic(false)`); if the reload
+  itself should read pending, that needs an explicit `affects(target)` before
+  the `refresh()`.
+- **Stale beta.17–20 mask assumptions**: code (or comments) that reason about
+  an optimistic write "masking" `isPending` store-wide, or that treat a bare
+  `refresh()` as if it were pending on its own — both were beta.17–beta.20
+  behavior, removed/superseded in beta.21 (`question-scoped-pending-affects`).
+  On beta.21 typings this silently changes UI (a spinner that used to show now
+  doesn't, or vice versa) with no compiler error to catch it — flag any
+  `isPending` use next to an optimistic write and check it against the current
+  rule, not habit.
 - **Granularity**: selection/derived caches notifying whole collections →
   `createProjection`. Fixed-slot lists diffed with `<For>` → `<Repeat>`.
 - **Ownership**: module-scope effects/roots intentional? Detached lifetime must

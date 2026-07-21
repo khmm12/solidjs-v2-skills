@@ -1,6 +1,6 @@
 # Reactivity: batching, effects, ownership
 
-Verified against solid-js@2.0.0-beta.17 (published typings) and `next@a51cac19` sources/tests.
+Verified against solid-js@2.0.0-beta.21 (published typings) and `next@2bf022eb` sources/tests.
 
 ## Microtask batching — reads lag writes
 
@@ -90,6 +90,13 @@ crash. This fires only when *nothing* catches it: a `createErrorBoundary` /
 `<Errored>` that handles the error keeps the system alive, so the fix is to
 wrap fallible reactive code in a boundary, not to defuse the halt.
 
+The cause is now always surfaced: `haltReactivity` logs the causing error
+alongside the halt message, and a boundary that cannot deliver an error to any
+handler halts and rethrows it instead of discarding it — so the halt can no
+longer swallow the error silently (previously an error thrown during initial
+render under a specific `<Loading>` + element + `<Show>` nesting could vanish
+entirely with no console trace).
+
 ```ts
 import { resetErrorHalt } from "@solidjs/signals";  // NOT re-exported from solid-js
 ```
@@ -132,6 +139,14 @@ function Bad2({ title }) { return <h1>{title}</h1>; }                       // �
 function Good(props) { return <h1>{props.title}</h1>; }                     // ✅ read in JSX
 function AlsoGood(props) { const t = untrack(() => props.title); ... }      // ✅ explicit one-shot
 ```
+
+A **derived store** (`createStore(derive, seed)` / `createProjection`) read
+untracked before its first resolution behaves like an async memo, not like a
+plain store: the seed is a draft for the derive function only, never an
+observable value, so any outside read throws `NotReadyError` — in a dev
+strict-read scope (component body) this is the more descriptive
+`PENDING_ASYNC_UNTRACKED_READ`. Before beta.21 the store proxy's untracked
+path silently returned the seed instead.
 
 ## Passing reactive values to children — props are getters
 
@@ -329,7 +344,7 @@ Every dev-mode diagnostic has a code. The ones you'll hit, with the fix:
 | `REACTIVE_WRITE_IN_OWNED_SCOPE` | error | Move write to handler/action/`onSettled`; derive with memo; `ownedWrite` only for internal state |
 | `ACTION_CALLED_IN_OWNED_SCOPE` | error | Define the action wherever appropriate, but invoke it from a handler/effect callback/`onSettled`, not a component body or computation |
 | `STRICT_READ_UNTRACKED` | warn | Read in JSX/memo/effect-compute, or wrap in `untrack` |
-| `PENDING_ASYNC_UNTRACKED_READ` | error | Read async values in a tracked scope (JSX/memo/compute) |
+| `PENDING_ASYNC_UNTRACKED_READ` | error | Read async values (including a derived store before its first resolution) in a tracked scope (JSX/memo/compute) |
 | `ASYNC_OUTSIDE_LOADING_BOUNDARY` | warn | FYI: root mount deferred until async settles; add `<Loading>` for explicit fallback. If the app "doesn't mount", check for this |
 | `CLEANUP_IN_FORBIDDEN_SCOPE` | error | Return a cleanup function from `onSettled`/`createTrackedEffect` instead of `onCleanup` |
 | `SETTLED_CLEANUP_UNOWNED` | error | Don't return a cleanup from an out-of-band `onSettled` (event handler/tracked effect/nested `onSettled`); call the setup helper from the component body |
@@ -337,7 +352,7 @@ Every dev-mode diagnostic has a code. The ones you'll hit, with the fix:
 | `MISSING_EFFECT_FN` | error | Pass the apply function: `createEffect(compute, apply)` — the single-argument form is invalid |
 | `NO_OWNER_EFFECT` / `NO_OWNER_CLEANUP` / `NO_OWNER_BOUNDARY` | warn | Create inside a component or `createRoot` |
 | `RUN_WITH_DISPOSED_OWNER` | warn | Don't reuse disposed owners |
-| `REACTIVITY_HALTED` | log | An uncaught error halted reactivity; further writes/flushes are ignored. Wrap fallible code in an error boundary; `resetErrorHalt()` (`@solidjs/signals`) is tests/dev-only |
+| `REACTIVITY_HALTED` | log | An uncaught error halted reactivity; further writes/flushes are ignored. The causing error is always logged/rethrown alongside it, even when a boundary absorbed the unwind. Wrap fallible code in an error boundary; `resetErrorHalt()` (`@solidjs/signals`) is tests/dev-only |
 
 Programmatic access (tooling/tests): `DEV.diagnostics.subscribe(listener)` and
 `DEV.diagnostics.capture()` (returns `{ events, clear(), stop() }`).

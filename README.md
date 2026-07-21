@@ -12,7 +12,7 @@ migrate, and review v2 code correctly.
 
 | Skill | Use case |
 |---|---|
-| `solidjs-v2` | Writing/editing Solid 2.0 code. Ten core rules + topic references (reactivity, async/actions, stores, control flow/DOM, TypeScript setup, composed patterns) + a verbatim copy of the official CHEATSHEET. |
+| `solidjs-v2` | Writing/editing Solid 2.0 code. Ten core rules + topic references (reactivity, async/actions, stores, control flow/DOM, server functions, TypeScript setup, composed patterns) + a verbatim copy of the official CHEATSHEET. |
 | `solidjs-v2-migration` | Migrating a 1.x codebase/file to 2.0. Four-pass workflow (mechanical → semantic → diagnostics-driven → behavioral audit) + full rename/removal map with recipes. |
 | `solidjs-v2-reviewer` | Reviewing Solid 2.0 diffs for React-isms, 1.x-isms, and reactivity bugs. Greppable smell tables with severity + judgement checklist. |
 
@@ -74,9 +74,9 @@ Unnamespaced, instant, updates via `git pull`. No plugin machinery.
 
 ## Sources & versioning
 
-Distilled from `documentation/solid-2.0/` (MIGRATION.md + RFC 01–09) and
-`packages/solid/CHEATSHEET.md` at solidjs/solid `next@a51cac19`
-(solid-js@2.0.0-beta.17), with API surface verified against the **published**
+Distilled from `documentation/solid-2.0/` (MIGRATION.md + RFC 01–10) and
+`packages/solid/CHEATSHEET.md` at solidjs/solid `next@2bf022eb`
+(solid-js@2.0.0-beta.21), with API surface verified against the **published**
 package typings — the betas churn the public API freely: documented, public
 APIs can vanish (e.g. `isRefreshing` was a public `solid-js` export from beta.0
 through beta.14, removed wholesale in beta.15), and pending `.changeset/`
