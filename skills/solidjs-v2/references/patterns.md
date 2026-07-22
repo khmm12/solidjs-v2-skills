@@ -1,6 +1,6 @@
 # Patterns: composing Solid 2.0 primitives
 
-Verified against solid-js@2.0.0-beta.21 (published typings) and `next@2bf022eb` sources/tests.
+Verified against solid-js@2.0.0-beta.22 (published typings) and `next@8b371341` sources/tests.
 
 Field-tested compositions on top of the core APIs. Each pattern names the
 primitives it leans on; signatures are covered in the sibling reference files.
@@ -308,7 +308,7 @@ function handleSubmit() {
 Scope it tightly (handlers, tests); sprinkling `flush()` to "fix" stale reads
 usually means a read belongs in JSX or an effect instead.
 
-## Known beta gotchas (observed at 2.0.0-beta.21)
+## Known beta gotchas (observed at 2.0.0-beta.22)
 
 - **`isPending`/optimistic semantics changed underneath beta.17-era code
   (landed in beta.21, changeset `question-scoped-pending-affects`).** If you

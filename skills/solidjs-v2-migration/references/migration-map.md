@@ -1,8 +1,8 @@
 # Solid 1.x → 2.0 migration map
 
 Full rename/removal table with before/after recipes. Source: official
-MIGRATION.md + RFCs at solidjs/solid@next (2bf022eb), verified against
-solid-js@2.0.0-beta.21 typings.
+MIGRATION.md + RFCs at solidjs/solid@next (8b371341), verified against
+solid-js@2.0.0-beta.22 typings.
 
 ## Import paths (mechanical)
 

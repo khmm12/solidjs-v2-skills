@@ -1,4 +1,4 @@
-<!-- Verbatim copy of packages/solid/CHEATSHEET.md from github.com/solidjs/solid@next (commit 2bf022eb, solid-js@2.0.0-beta.21). Do not edit; refresh from upstream when the beta advances. -->
+<!-- Verbatim copy of packages/solid/CHEATSHEET.md from github.com/solidjs/solid@next (commit 8b371341, solid-js@2.0.0-beta.22). Do not edit; refresh from upstream when the beta advances. -->
 
 # Solid 2.0 — Cheatsheet
 

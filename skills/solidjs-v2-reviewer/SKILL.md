@@ -98,7 +98,7 @@ Run these over the changed files; each hit needs a fix or a justification.
   an optimistic write "masking" `isPending` store-wide, or that treat a bare
   `refresh()` as if it were pending on its own — both were beta.17–beta.20
   behavior, removed/superseded in beta.21 (`question-scoped-pending-affects`).
-  On beta.21 typings this silently changes UI (a spinner that used to show now
+  On beta.21+ typings this silently changes UI (a spinner that used to show now
   doesn't, or vice versa) with no compiler error to catch it — flag any
   `isPending` use next to an optimistic write and check it against the current
   rule, not habit.

@@ -75,8 +75,8 @@ Unnamespaced, instant, updates via `git pull`. No plugin machinery.
 ## Sources & versioning
 
 Distilled from `documentation/solid-2.0/` (MIGRATION.md + RFC 01–10) and
-`packages/solid/CHEATSHEET.md` at solidjs/solid `next@2bf022eb`
-(solid-js@2.0.0-beta.21), with API surface verified against the **published**
+`packages/solid/CHEATSHEET.md` at solidjs/solid `next@8b371341`
+(solid-js@2.0.0-beta.22), with API surface verified against the **published**
 package typings — the betas churn the public API freely: documented, public
 APIs can vanish (e.g. `isRefreshing` was a public `solid-js` export from beta.0
 through beta.14, removed wholesale in beta.15), and pending `.changeset/`

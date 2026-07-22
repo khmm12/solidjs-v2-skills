@@ -1,7 +1,7 @@
 # Server functions
 
-Verified against solid-js@2.0.0-beta.21 / @solidjs/web@2.0.0-beta.21 (published
-typings) and `next@2bf022eb` sources. Server functions are a core Solid 2.0
+Verified against solid-js@2.0.0-beta.22 / @solidjs/web@2.0.0-beta.22 (published
+typings) and `next@8b371341` sources. Server functions are a core Solid 2.0
 feature, not a metaframework add-on: any Vite app gets them, with or without a
 router/Start.
 

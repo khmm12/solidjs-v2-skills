@@ -1,6 +1,6 @@
 # Async data, transitions, actions, optimistic UI
 
-Verified against solid-js@2.0.0-beta.21 (published typings) and `next@2bf022eb` sources/tests.
+Verified against solid-js@2.0.0-beta.22 (published typings) and `next@8b371341` sources/tests.
 
 ## Async lives in computations — there is no `createResource`
 
@@ -165,10 +165,16 @@ marked slot — and anything **derived** from it — reads pending
 (`isPending` → `true`) from the declaration until the surrounding transaction
 settles or reverts, exactly as if a real fetch for it were in flight. The
 marked value itself stays readable throughout (mark-only pending is
-**value-transparent** — reading it does not suspend and is not Suspense-like;
-it only shows up through `isPending`). It is additive-only: a mark can turn
-pending *on* for data the graph can't otherwise see changing; nothing can
-turn pending *off* while a real change is in flight.
+**value-transparent** — reading it never suspends or throws not-ready; it
+surfaces through `isPending`, and a live mark also holds an **unrevealed**
+`<Loading>` boundary's fallback the way real in-flight async would — it never
+flips an already-revealed boundary back to fallback). It is additive-only: a
+mark can turn pending *on* for data the graph can't otherwise see changing;
+nothing can turn pending *off* while a real change is in flight. `affects`
+belongs inside an action (or another transaction): called outside any
+transaction the mark is released at the end of the current flush, so it never
+reaches your effects or UI (beta.22 pins this as an explicit contract —
+ambient marks are verdict-only).
 
 ```ts
 declare function affects(target: Accessor<unknown> | Store<object>): void;

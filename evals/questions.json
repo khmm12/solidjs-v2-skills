@@ -1,6 +1,6 @@
 {
   "meta": {
-    "target": "solid-js@2.0.0-beta.21 / @solidjs/web@2.0.0-beta.21",
+    "target": "solid-js@2.0.0-beta.22 / @solidjs/web@2.0.0-beta.22",
     "note": "Single source of truth for the skill exam. Every must_include claim is sourced from a verified reference file (see `source`). Do NOT add a claim you cannot trace to a reference or installed typings — a wrong answer key silently inverts the eval. must_not entries are regexes that ONLY appear in wrong answers (safe for a fast pre-fail); semantic negatives are encoded as positive must_include claims instead.",
     "axes": {
       "api": "API understanding — signatures, what exists / what was removed",
@@ -8,7 +8,7 @@
       "react": "Solid vs React — does the model drag React reflexes over",
       "v1": "Solid 2.0 vs 1.x — does the model fall back to 1.x APIs"
     },
-    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.21, @solidjs/web). "
+    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.22, @solidjs/web). "
   },
   "questions": [
     {
@@ -78,7 +78,7 @@
         "import\\s*\\{[^}]*isRefreshing",
         "yes, you can import isRefreshing"
       ],
-      "source": "async-and-actions.md:224-231"
+      "source": "async-and-actions.md:230-237"
     },
     {
       "id": "A5",
@@ -94,7 +94,7 @@
       "must_not": [
         "return(?:ed)?\\s+value\\s+(?:is\\s+|becomes\\s+)(?:the\\s+)?committed"
       ],
-      "source": "async-and-actions.md:63-73, 277-284"
+      "source": "async-and-actions.md:63-73, 283-290"
     },
     {
       "id": "A6",
@@ -144,7 +144,7 @@
         "resource\\.error",
         "createResource\\s*\\("
       ],
-      "source": "async-and-actions.md:311-316, 237-240"
+      "source": "async-and-actions.md:317-322, 243-246"
     },
     {
       "id": "A9",
@@ -160,7 +160,7 @@
       "must_not": [
         "call(?:ing)? it (?:directly )?in (?:the )?component body is (?:fine|legal|allowed)"
       ],
-      "source": "async-and-actions.md:260-266; reactivity.md:108-117"
+      "source": "async-and-actions.md:266-272; reactivity.md:108-117"
     },
     {
       "id": "A10",
@@ -177,7 +177,7 @@
         "StatusError (?:is|will be) (?:passed|returned|received)",
         "action[^.]{0,80}resolves? (?:successfully )?(?:with )?undefined"
       ],
-      "source": "async-and-actions.md:311-316, 386-397; reactivity.md:66-70"
+      "source": "async-and-actions.md:317-322, 392-403; reactivity.md:66-70"
     },
     {
       "id": "A11",
@@ -227,7 +227,7 @@
       "must_not": [
         "affects\\s*\\(\\s*\\w+\\s*,\\s*[\"'][^\"']+[\"']\\s*,\\s*[\"']"
       ],
-      "source": "async-and-actions.md:160-190"
+      "source": "async-and-actions.md:160-196"
     },
     {
       "id": "A14",
@@ -277,6 +277,19 @@
         "instanceof ResponseEnvelope (?:to check|is reliable|works)"
       ],
       "source": "server-functions.md:85-117"
+    },
+    {
+      "id": "A17",
+      "axis": "api",
+      "title": "affects() called outside an action does nothing visible",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "I call `affects(todos)` from a plain click handler (no `action()` wrapping it) right before kicking off a fetch, expecting the list to read pending while the fetch runs. `isPending(() => todos.length)` never flips in the UI. Why, and where does `affects` belong?",
+      "must_include": [
+        "an affects() mark is scoped to the surrounding transaction; called outside any transaction it is released at the end of the current flush, so it never reaches effects or the UI",
+        "put the affects() call inside an action() (the transaction), alongside the refresh()/awaited work, so the mark stays live until that transaction settles or reverts"
+      ],
+      "must_not": [],
+      "source": "async-and-actions.md:160-183"
     },
     {
       "id": "B1",
@@ -396,7 +409,7 @@
         "\\.loading\\b",
         "isRefreshing\\s*\\("
       ],
-      "source": "async-and-actions.md:111-159, 340-365"
+      "source": "async-and-actions.md:111-159, 346-371"
     },
     {
       "id": "B8",
@@ -463,7 +476,7 @@
       "must_not": [
         "writes? (?:right\\s+)?after\\s+(?:an?\\s+)?await\\s+(?:is|are)\\s+(?:transaction-?safe|fine|safe)"
       ],
-      "source": "async-and-actions.md:291-309"
+      "source": "async-and-actions.md:297-315"
     },
     {
       "id": "B12",
@@ -648,7 +661,7 @@
         "refresh\\s*\\(\\s*\\w+\\s*\\)\\s*(?:alone\\s*)?(?:flips|sets|makes)\\s*isPending\\s*(?:to\\s*)?true",
         "isPending\\s*(?:\\([^)]*\\))?\\s*(?:becomes|is)\\s*true\\s*(?:on|during|for)\\s*(?:a\\s*)?(?:bare\\s*)?refresh"
       ],
-      "source": "async-and-actions.md:137-159, 192-213; migration-map.md:112"
+      "source": "async-and-actions.md:137-159, 198-219; migration-map.md:112"
     }
   ]
 }
