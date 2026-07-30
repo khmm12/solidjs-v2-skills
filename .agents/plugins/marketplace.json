@@ -1,0 +1,20 @@
+{
+  "name": "solidjs-v2-skills",
+  "interface": {
+    "displayName": "SolidJS v2 Skills"
+  },
+  "plugins": [
+    {
+      "name": "solidjs-v2-skills",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/khmm12/solidjs-v2-skills.git"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

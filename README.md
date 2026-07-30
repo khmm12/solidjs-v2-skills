@@ -38,7 +38,33 @@ npx skills add khmm12/solidjs-v2-skills@solidjs-v2 # a single skill
 From a local clone: `npx skills add ./solidjs-v2-skills`.
 Update later with `npx skills update`.
 
-### Option B — Claude Code plugin (versioned, namespaced)
+### Option B — Codex plugin (versioned, namespaced)
+
+The repo is also a native Codex plugin and self-hosting marketplace:
+
+```sh
+codex plugin marketplace add khmm12/solidjs-v2-skills
+codex plugin add solidjs-v2-skills@solidjs-v2-skills
+```
+
+From a local clone instead of GitHub:
+
+```sh
+codex plugin marketplace add /absolute/path/to/solidjs-v2-skills
+codex plugin add solidjs-v2-skills@solidjs-v2-skills
+```
+
+Start a new Codex session after installation so the bundled skills are loaded.
+Refresh the Git-backed marketplace later with:
+
+```sh
+codex plugin marketplace upgrade solidjs-v2-skills
+```
+
+Codex uses `.codex-plugin/plugin.json`; Claude Code compatibility is kept
+alongside it without duplicating the shared `skills/` content.
+
+### Option C — Claude Code plugin (versioned, namespaced)
 
 The repo is a self-hosting plugin marketplace. In Claude Code:
 
@@ -58,7 +84,7 @@ Plugin skills are namespaced (`solidjs-v2-skills:solidjs-v2`); auto-triggering
 is unaffected. Update later with `/plugin` → manage, or
 `/plugin marketplace update solidjs-v2-skills`.
 
-### Option C — personal skills (plain symlinks)
+### Option D — personal skills (plain symlinks)
 
 Symlink each skill into `~/.claude/skills/` (directory symlinks are picked up):
 
@@ -84,7 +110,7 @@ entries must be checked before documenting beta-only APIs. At the beta.28
 anchor all changesets are consumed by prerelease history; none queue a later
 API change.
 
-When the beta advances, see the maintenance procedure in [CLAUDE.md](CLAUDE.md).
+When the beta advances, see the maintenance procedure in [AGENTS.md](AGENTS.md).
 
 ## Eval
 
