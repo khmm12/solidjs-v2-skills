@@ -1,6 +1,6 @@
 # Patterns: composing Solid 2.0 primitives
 
-Verified against solid-js@2.0.0-beta.22 (published typings) and `next@8b371341` sources/tests.
+Verified against solid-js@2.0.0-beta.28 (published typings) and `next@90fcbd0a` sources/tests.
 
 Field-tested compositions on top of the core APIs. Each pattern names the
 primitives it leans on; signatures are covered in the sibling reference files.
@@ -175,22 +175,25 @@ dance — and dodges the `Exclude<T, Function>` generic trap (see
 
 ## Demand-driven external resource
 
-`lazy` (autodispose when unobserved) + `unobserved` + `onCleanup` make
-computations that hold external resources only while someone is listening:
+For a computation that returns its resource **synchronously**, `lazy` +
+`unobserved` + `onCleanup` hold that resource only while someone is listening:
 
 ```ts
 const price = createMemo(
   () => {
     const ws = new WebSocket(`${url()}/prices`);
     onCleanup(() => ws.close());
-    return new Promise(resolve => { ws.onmessage = e => resolve(JSON.parse(e.data)); });
+    return ws; // settled synchronously; consumers attach the protocol they need
   },
   { lazy: true, unobserved: () => log("price feed torn down") }
 );
 // No subscribers → socket closed; next read → fresh socket.
 ```
 
-This resolves **once** (the first message). To stream **every** message, use an
+Do **not** change this to a pending Promise and expect the same immediate
+teardown. In beta.28 an in-flight lazy async computation survives a temporary
+zero-subscriber gap, and a later subscriber rejoins it. Keep deterministic
+async cancellation in synchronous `onCleanup`; to stream messages, use an
 async generator — next.
 
 ## Streaming a socket through an async-generator memo
@@ -220,7 +223,8 @@ function createSocketStream<T>(url: () => string) {
     yield* iterable; // each message commits a new value; never returns on its own
   });
 }
-// Add { lazy: true, unobserved } to make it demand-driven like the one-shot above.
+// `lazy` defers startup; unobserved iterator release reaches the active cleanup,
+// which must cancel the source and unblock the parked await as shown above.
 ```
 
 The callback→async-iterable bridge — reusable; subscribes eagerly and **buffers**, so
@@ -308,7 +312,7 @@ function handleSubmit() {
 Scope it tightly (handlers, tests); sprinkling `flush()` to "fix" stale reads
 usually means a read belongs in JSX or an effect instead.
 
-## Known beta gotchas (observed at 2.0.0-beta.22)
+## Known beta gotchas (observed at 2.0.0-beta.28)
 
 - **`isPending`/optimistic semantics changed underneath beta.17-era code
   (landed in beta.21, changeset `question-scoped-pending-affects`).** If you

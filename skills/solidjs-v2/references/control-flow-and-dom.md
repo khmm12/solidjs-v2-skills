@@ -1,7 +1,7 @@
 # Control flow and DOM
 
-Verified against solid-js@2.0.0-beta.22 / @solidjs/web@2.0.0-beta.22 typings,
-`next@8b371341` sources and `packages/solid-web/test/flow.type-tests.tsx`.
+Verified against solid-js@2.0.0-beta.28 / @solidjs/web@2.0.0-beta.28 typings,
+`next@90fcbd0a` sources and `packages/solid-web/test/flow.type-tests.tsx`.
 Control-flow components live in `solid-js`; `render`/`hydrate`/`Portal`/
 `Dynamic`/`dynamic` live in `@solidjs/web`.
 
@@ -125,6 +125,14 @@ return <Active value={value()} />;
 `createComponent(dynamic(source), props)`. One `dynamic(...)` source is shared
 across all mounted instances.
 
+### SSR: pending dynamic/lazy components and the first shell
+
+In streaming SSR, a pending `dynamic()` or `lazy()` component inside `<Loading>`
+no longer gates the first shell: the boundary fallback is emitted in the shell and
+the resolved component streams later. Without a boundary, the same pending
+component is a root hole; that hole still gates the first shell, which waits and
+emits the resolved component inline rather than sending an empty shell first.
+
 ### `lazy()` in SSR and hydration
 
 `lazy(loader, moduleUrl?)` lives in `solid-js`. The optional callsite module
@@ -216,6 +224,18 @@ function titleDirective(source) {
   };
 }
 ```
+
+For library code that forwards or applies user refs, use `applyRef` rather than
+manually flattening callback arrays; its exact DOM typing and recursive `JSX.Ref`
+shape are in `references/typescript-setup.md`.
+
+### `claimElementTree` is renderer infrastructure
+
+`claimElementTree(root)` sweep-claims navigation-relevant descendants such as
+`a[href]` and `form[action]` when live DOM arrives without compiled creation code.
+It is a low-level integration primitive for frames, routers, and adopted/streamed
+SSR ranges—not an application ref, hydration, or DOM-initialization idiom. The
+server export is a no-op.
 
 ## Rendering entries
 

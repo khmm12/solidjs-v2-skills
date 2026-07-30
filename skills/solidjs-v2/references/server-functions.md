@@ -1,7 +1,7 @@
 # Server functions
 
-Verified against solid-js@2.0.0-beta.22 / @solidjs/web@2.0.0-beta.22 (published
-typings) and `next@8b371341` sources. Server functions are a core Solid 2.0
+Verified against solid-js@2.0.0-beta.28 / @solidjs/web@2.0.0-beta.28 (published
+typings) and `next@90fcbd0a` sources. Server functions are a core Solid 2.0
 feature, not a metaframework add-on: any Vite app gets them, with or without a
 router/Start.
 
@@ -68,10 +68,11 @@ if (url.pathname.startsWith("/_server")) {
 }
 ```
 
-`handleServerFunctionRequest` resolves the id, enforces the declared method
-(405 on mismatch), decodes args, runs the function under a request-event
-scope, encodes the result. Every hook is optional; the bare handler works
-alone. `@solidjs/web/server-functions` (no `/server` or `/client` suffix)
+`handleServerFunctionRequest` resolves the id, rejects GET unless the function
+declared `GET` (POST remains accepted for every function), decodes args, runs
+the function under a request-event scope, and encodes the result. Every hook
+is optional; the bare handler works alone. `@solidjs/web/server-functions`
+(no `/server` or `/client` suffix)
 resolves to whichever half matches the current build condition — pick the
 explicit subpath only when you need one half's types outside its own build
 (e.g. a universal integration file).
@@ -109,7 +110,8 @@ async function login(formData: FormData) {
   omitted).
 - `init` on all three accepts `revalidate?: string | string[]` alongside the
   usual `ResponseInit` fields — opaque cache keys an integration (router)
-  assigns meaning to via `X-Revalidate`.
+  assigns meaning to via `X-Revalidate`. Import the exact header name as
+  `REVALIDATE_HEADER` from the root `@solidjs/web` entry.
 
 **Check envelopes with `isResponseEnvelope(v)`, never `instanceof
 ResponseEnvelope`** — it's a registered-symbol brand so it survives separately
@@ -137,13 +139,14 @@ getServerFunctionMetadata(getUser)?.method === "GET"; // true
 isServerFunction(getUser);                             // true
 ```
 
-- `GET(fn)` declares a function callable over HTTP GET (args codec-encoded in
-  the query string — cacheable by HTTP infra). Needs **no compiler support**:
+- `GET(fn)` additionally allows HTTP GET (args codec-encoded in the query
+  string — cacheable by HTTP infra); it does not disable POST. Needs **no
+  compiler support**:
   function-level directives round-trip the wrapper call, so
   `GET(async (...) => { "use server"; ... })` compiles by swapping only the
   inner function expression. Server-side the wrapper is identity-flavored
-  (SSR stays in-process); the handler still enforces the method (405 on a
-  non-GET call to a `GET`-declared function, and vice versa).
+  (SSR stays in-process); a GET call to a function without this declaration
+  receives 405.
 - `withMeta(fn, meta)` writes arbitrary metadata to the same channel `GET`
   uses; later writes shallow-merge over earlier ones, so it composes with
   `GET` in either order. It's the only public writer — without it,
@@ -182,6 +185,40 @@ that apply uniformly to every call — declaration-time metadata is the wrong
 tool for something session-dynamic, and this is the client-side symmetric of
 the server handler hooks (`createEvent`/`transformResult`/`handleNoJS`).
 
+## Transport integration seams and argument encoding
+
+The client config also exposes two lower-level integration seams:
+
+```ts
+configureServerFunctionsClient({
+  responseHandler: {
+    capture: ({ id, meta }) => captureOwner(), // synchronous, at the call site
+    handle(response, { id, meta, args, context }) {
+      return isSpecial(response) ? consumeSpecial(response, context) : undefined;
+    },
+  },
+  serializeArgs: args => encodeRichArgs(args),
+});
+```
+
+`responseHandler.handle` sees every response before normal decoding; a
+non-`undefined` return becomes the call result. Its optional `capture` keeps
+ambient call-site context available after the fetch. By default argument
+lists must be JSON-safe (null, booleans, strings, finite numbers, arrays, and
+plain/null-prototype objects), except that one `Blob`, `File`, `FormData`, or
+other natively encoded body may be passed directly. `Date`, `Map`, `Set`,
+typed arrays, cycles, `undefined`, non-finite numbers, and class instances
+need an explicit rich `serializeArgs` opt-in whose wire format the server can
+decode; `codec` alone does not put the rich serializer in the client bundle.
+
+On the server, `configureServerFunctionsServer` accepts server-wide
+`transformResult`, `transformDirectResult`, and `handleNoJS`; per-request
+`transformResult`/`handleNoJS` options override their configured counterparts.
+`handleNoJS: null` is valid only in the server-wide config and disables the
+built-in form convention. `decodeResponsePayload(response)` is the public
+integration decoder that returns `{ value, flightData? }`, splitting a
+single-flight payload without making integrations decode its wire shape.
+
 ## Single-flight — folding revalidation data into a mutation's response
 
 Opt-in, not automatic-by-default: registering a consumer **is** the opt-in.
@@ -198,7 +235,8 @@ const unsubscribe = subscribeFlightData((data, { response }) => {
 // server
 configureServerFunctionsServer({
   collectFlightData(event, outcome) {
-    // outcome: { id, value, response, request, thrown }
+    // id, value, response, request, thrown;
+    // plus targetUrl, revalidateKeys, foldedHeaders
     return produceRouteData(outcome); // any codec-serializable value
   },
 });
@@ -213,16 +251,67 @@ without the feature. What `data` *is* (a data-only render, route preloads, a
 cache query) is entirely the integration's business; core only standardizes
 the wire shape and delivery.
 
+`ServerFunctionOutcome` contains the complete call result: build-stable `id`,
+caller-visible `value`, optional metadata `response`, original `request`, and
+`thrown`. It also supplies pre-digested `targetUrl` (resolved outcome
+`Location`, otherwise the referring page; absent for an unusable referer or a
+cross-origin redirect), split `revalidateKeys`, and `foldedHeaders`, where
+mutation `Set-Cookie` effects have been applied for post-mutation reads. For
+custom collection, `foldSetCookies(headers, setCookies)` from the server entry
+performs the same cookie folding without mutating its input.
+
 ## No-JS / progressive enhancement
 
 A reference's `.url` doubles as a form `action`. The presence/absence of the
 `X-Server-Function-Instance` header is how the server tells a scripted call
 from an unscripted one (no-JS form post, direct HTTP) — unscripted calls get
-their args parsed from FormData/query string instead of the codec, and get
-routed through the `handleNoJS(result, request, args, thrown?)` handler hook
-(default: the normal serialized response). Core's job stops at detection and
-the hook; the flash-cookie convention and SSR submission-state seeding are a
-router/Start concern, not core's.
+their args parsed from FormData/query string instead of the codec.
+
+The built-in browser-form path uses `createNoJSHandler()`. In beta.28 its exact
+runtime behavior is:
+
+- a **truthy**, non-`Response` returned/thrown outcome is stored in the one-shot
+  `flash` cookie, then redirected to the request referer (or `base`/`/` when no
+  usable referer exists) with 303;
+- a falsy outcome (`0`, `false`, `""`, `null`, `undefined`) is **not flashed**
+  because the runtime uses a truthiness guard. It still redirects, so the next
+  render cannot replay that outcome — a beta.28 footgun, not falsy-safe error
+  transport;
+- a returned or thrown `Response` carries its own headers. Its `Location` is
+  resolved against the app base and a valid redirect status is retained; with
+  no `Location` it redirects back. A `Response` is never flashed.
+
+A per-request `handleNoJS(result, request, args, thrown?)` overrides the
+configured/default handler; server config can install a global custom handler
+or use `null` to disable the convention and return the normal serialized
+response. Install a custom handler when falsy outcomes must survive no-JS
+replay.
+
+```ts
+import {
+  configureServerFunctionsServer, createNoJSHandler, decodeFlashCookie,
+} from "@solidjs/web/server-functions/server";
+import { hasFlashCookie, clearFlashCookie } from "@solidjs/web/server-functions";
+
+configureServerFunctionsServer({
+  handleNoJS: createNoJSHandler({ base: "/app" }),
+});
+
+export function consumeFlash(request: Request) {
+  const cookie = request.headers.get("cookie");
+  return {
+    submission: decodeFlashCookie(cookie), // feed into the next SSR submission state
+    clearCookie: hasFlashCookie(cookie) ? clearFlashCookie() : undefined,
+  };
+}
+```
+
+`FLASH_COOKIE`, `hasFlashCookie`, and `clearFlashCookie` are isomorphic exact
+exports. `encodeFlashCookie`/`decodeFlashCookie` and `createNoJSHandler` are
+server exports. Flash payloads are JSON in a roughly 4 KB cookie budget:
+`FormData`/`URLSearchParams` become entry pairs and files are dropped. Clear
+on the immediately following render whether decoding succeeds or not; append
+the returned `clearCookie` value as `Set-Cookie`.
 
 ## `RequestEvent` and request scoping
 
@@ -256,3 +345,9 @@ frameworks extend `locals` with their own shape.
 - Single-flight data only flows once something calls `subscribeFlightData` —
   a router with no registered consumer gets plain responses, not a bug to
   chase.
+- Default client arguments are deliberately JSON-safe, not the full result
+  codec. Configure `serializeArgs` explicitly before passing rich values.
+- A flash outcome is one-shot and cookie-sized; never use it for files or a
+  large result, and never flash a `Response` yourself. Beta.28 also drops
+  falsy outcomes from the built-in flash path; use a custom `handleNoJS` when
+  those values carry meaning.

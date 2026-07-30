@@ -1,6 +1,6 @@
 # Async data, transitions, actions, optimistic UI
 
-Verified against solid-js@2.0.0-beta.22 (published typings) and `next@8b371341` sources/tests.
+Verified against solid-js@2.0.0-beta.28 (published typings) and `next@90fcbd0a` sources/tests.
 
 ## Async lives in computations — there is no `createResource`
 
@@ -40,11 +40,26 @@ const user = createMemo(() => fetchUser(params.id));
 
 ## Cancellation & cleanup in async computations
 
-A computation that returns a `Promise` or async generator owns in-flight work — a
-fetch, a socket, a subscription. Solid does **not** cancel it for you. Register
-cleanup with `onCleanup`, **synchronously, before the first `await`/`yield`**: after
-a suspension point the continuation runs with no owner, so an `onCleanup` placed
-there warns `NO_OWNER_CLEANUP` and is silently never run.
+A computation that returns a `Promise` or async generator can own external work —
+a fetch, a socket, a subscription. Solid manages the async computation's
+observation lifetime and releases unobserved iterators, but it cannot reliably
+cancel every external operation the computation awaits. Register cleanup with
+`onCleanup`, **synchronously, before the first `await`/`yield`**: after a suspension
+point the continuation runs with no owner, so an `onCleanup` placed there warns
+`NO_OWNER_CLEANUP` and is silently never run.
+
+### Lazy async memo: temporary unobserved gaps keep in-flight work alive
+
+Once a lazy async memo has started, temporarily losing its final subscriber does
+**not** dispose the pending computation. A subscriber that arrives before it
+settles rejoins that same in-flight computation; Solid does not restart duplicate
+work merely because observation briefly dropped to zero. If it settles while
+still unobserved, normal teardown resumes.
+
+For an `AsyncIterable`, Solid also handles releasing/closing the unobserved
+iterator. That runtime release is not a substitute for deterministic resource
+cancellation: still install a synchronous `onCleanup` that aborts the
+`AbortController`, closes the socket, or explicitly closes/unblocks the iterator.
 
 ### Plain async — abort the in-flight request
 

@@ -1,6 +1,6 @@
 ---
 name: solidjs-v2
-description: Answer SolidJS 2.0 API and beta-behavior questions, and write or edit SolidJS 2.0 code (solid-js 2.x / next / beta). Use for questions or implementation involving components, signals/effects/batching, async data/generators/actions and Loading, removed beta APIs, stores and nested store views, lazy SSR/hydration, server functions ("use server"), or DOM code for solid-js 2.x or @solidjs/web. Not for Solid 1.x projects and not for migrating 1.x code (see solidjs-v2-migration).
+description: Answer SolidJS 2.0 API and beta-behavior questions, and write or edit SolidJS 2.0 code (solid-js 2.x / next / beta). Use for questions or implementation involving components, signals/effects/batching, async data/generators/actions and Loading, removed beta APIs, stores and nested store views, lazy SSR/hydration, server functions ("use server"), experimental server components/frames, or DOM code for solid-js 2.x or @solidjs/web. Not for Solid 1.x projects and not for migrating 1.x code (see solidjs-v2-migration).
 ---
 
 # SolidJS 2.0
@@ -83,6 +83,7 @@ Read the file matching the task before writing code in that area:
 | Composed patterns: SWR query, optimistic mutations, selection projections, global state, demand-driven resources | `references/patterns.md` |
 | Naming a primitive/composable (`create*` vs `use*`), cross-cutting conventions | `references/conventions.md` |
 | `"use server"` directive, server-function privacy/DCE, respond/redirect/reload, GET/withMeta, prepareRequest, single-flight, no-JS, getRequestEvent | `references/server-functions.md` |
+| Experimental server components, frames, client slots/state preservation, `installServerComponents`, `serverFunctions: { components: true }` | `references/server-components.md` |
 
 ## Failure modes
 

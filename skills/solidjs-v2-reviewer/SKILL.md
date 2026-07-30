@@ -33,6 +33,8 @@ Run these over the changed files; each hit needs a fix or a justification.
 | `use:[a-zA-Z]\|attr:\|bool:\|on:[a-z]\|oncapture:` in JSX | 🔴 removed | ref factories; standard attributes; `onClick` + ref for native opts |
 | `produce\s*\(` in setters | 🟡 redundant | drafts are the default |
 | `setStore\s*\(\s*["']` (path-style first arg) | 🔴 wrong API | draft setter or `storePath(...)` |
+| `reconcile\([^)]*,\s*\{` | 🔴 1.x options object | pass the key directly; omit for `"id"`, use `null` for positional |
+| `markRaw` imported from `solid-js` | 🔴 fake public API | no root export; use `{ shallow: true }` / replace the slot |
 | `/\*@once\*/` | 🟡 ignored marker | reactive read / `defaultValue` / `untrack` |
 | `\.loading\b\|\.error\b` on async values | 🔴 no such props | `<Loading>`/`isPending(() => x())` for loading (bare `refresh()` is silent — pair with `affects()` for a loud reload) / `<Errored>` for error |
 
@@ -104,6 +106,20 @@ Run these over the changed files; each hit needs a fix or a justification.
   rule, not habit.
 - **Granularity**: selection/derived caches notifying whole collections →
   `createProjection`. Fixed-slot lists diffed with `<For>` → `<Repeat>`.
+- **Shallow-store writes**: with `{ shallow: true }`, are nested raw records
+  mutated in place? That is inert; replace the root property/array slot by
+  reference. When refreshes rebuild row objects, use consumer keying such as
+  `<For keyed={row => row.id}>` if row DOM identity must survive.
+- **Reconcile model**: omission means key `"id"`, `null` means fully
+  positional, and missing item keys fall back positionally. Shape mismatch at
+  a nested array/object slot replaces it. Do not approve claims that standalone
+  `reconcile` silently swaps a different root entity (it is strict), or the
+  inverse claim that projection/derived-store returned roots cannot perform an
+  authoritative swap. At a shallow boundary reconciliation compares records
+  by reference rather than mutating their fields.
+- **Raw-object assumptions**: platform/native host objects are raw by default;
+  their slot reassignment is reactive but internal mutation is not. User class
+  instances remain wrappable, and `markRaw` is not a public root API.
 - **Ownership**: module-scope effects/roots intentional? Detached lifetime must
   be explicit (`runWithOwner(null, ...)`).
 - **Composable naming**: a `createX`/`useX` prefix should match lifecycle, not

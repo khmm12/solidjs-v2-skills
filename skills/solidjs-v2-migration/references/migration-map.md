@@ -1,8 +1,8 @@
 # Solid 1.x → 2.0 migration map
 
 Full rename/removal table with before/after recipes. Source: official
-MIGRATION.md + RFCs at solidjs/solid@next (8b371341), verified against
-solid-js@2.0.0-beta.22 typings.
+MIGRATION.md + RFCs at solidjs/solid@next (90fcbd0a), verified against
+solid-js@2.0.0-beta.28 typings.
 
 ## Import paths (mechanical)
 
@@ -168,11 +168,28 @@ setStore(s => { s.user.name = "Alice"; });    // 2.0 preferred
 setStore(storePath("user", "name", "Alice")); // or compat helper (also ranges, storePath.DELETE)
 
 setStore("todos", reconcile(server));         // 1.x
-setStore(s => { reconcile(server, "id")(s.todos); }); // 2.0 — call inside the draft
+setStore(s => { reconcile(server)(s.todos); }); // 2.0 — omitted key still defaults to "id"
 
 const m = createMutable({ n: 0 }); m.n++;     // 1.x
 const [m, setM] = createStore({ n: 0 }); setM(s => { s.n++; }); // 2.0
 ```
+
+The 1.x second argument was an options object; the 2.0 second argument is the
+key itself:
+
+| 1.x | 2.0 |
+|---|---|
+| `reconcile(server)` | `reconcile(server)` — omitted key defaults to `"id"` |
+| `reconcile(server, { key: "uuid" })` | `reconcile(server, "uuid")` |
+| `reconcile(server, { key: row => row.uuid })` | `reconcile(server, row => row.uuid)` |
+| `reconcile(server, { key: null })` | `reconcile(server, null)` — fully positional |
+
+There is no 2.0 `{ merge }` option to carry over; audit those call sites rather
+than passing the old object. In keyed mode, rows without the selected key still
+fall back positionally. Array/object shape mismatches replace the nested slot.
+Standalone `reconcile` remains strict when the caller targets a different
+root entity; do not treat it like a projection's authoritative returned-root
+swap.
 
 ### `<Index>` → `<For keyed={false}>`
 

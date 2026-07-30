@@ -1,6 +1,6 @@
 {
   "meta": {
-    "target": "solid-js@2.0.0-beta.22 / @solidjs/web@2.0.0-beta.22",
+    "target": "solid-js@2.0.0-beta.28 / @solidjs/web@2.0.0-beta.28",
     "note": "Single source of truth for the skill exam. Every must_include claim is sourced from a verified reference file (see `source`). Do NOT add a claim you cannot trace to a reference or installed typings — a wrong answer key silently inverts the eval. must_not entries are regexes that ONLY appear in wrong answers (safe for a fast pre-fail); semantic negatives are encoded as positive must_include claims instead.",
     "axes": {
       "api": "API understanding — signatures, what exists / what was removed",
@@ -8,7 +8,7 @@
       "react": "Solid vs React — does the model drag React reflexes over",
       "v1": "Solid 2.0 vs 1.x — does the model fall back to 1.x APIs"
     },
-    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.22, @solidjs/web). "
+    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.28, @solidjs/web). "
   },
   "questions": [
     {
@@ -62,14 +62,14 @@
         "useTransition",
         "startTransition"
       ],
-      "source": "async-and-actions.md:5-29, 102-109"
+      "source": "async-and-actions.md:5-29, 117-124"
     },
     {
       "id": "A4",
       "axis": "api",
       "title": "isRefreshing removed in beta.15",
       "routed_reference": "async-and-actions.md",
-      "prompt": "Can you import `isRefreshing` from `solid-js` in beta.21 to show a 'refreshing…' indicator? If not, what do you use instead?",
+      "prompt": "Can you import `isRefreshing` from `solid-js` to show a 'refreshing…' indicator? If not, what do you use instead?",
       "must_include": [
         "isRefreshing is GONE from solid-js public exports (it was public beta.0-beta.14, removed in beta.15) — do not import it",
         "there is no drop-in public replacement; use isPending(() => x()) and/or <Loading> to observe readiness, or affects()+refresh() to make a specific reload read as pending"
@@ -78,7 +78,7 @@
         "import\\s*\\{[^}]*isRefreshing",
         "yes, you can import isRefreshing"
       ],
-      "source": "async-and-actions.md:230-237"
+      "source": "async-and-actions.md:243-252"
     },
     {
       "id": "A5",
@@ -94,7 +94,7 @@
       "must_not": [
         "return(?:ed)?\\s+value\\s+(?:is\\s+|becomes\\s+)(?:the\\s+)?committed"
       ],
-      "source": "async-and-actions.md:63-73, 283-290"
+      "source": "async-and-actions.md:78-88, 298-305"
     },
     {
       "id": "A6",
@@ -110,7 +110,7 @@
       "must_not": [
         "import\\s*\\{[^}]*resetErrorHalt[^}]*\\}\\s*from\\s*[\"']solid-js[\"']"
       ],
-      "source": "reactivity.md:83-99, 355"
+      "source": "reactivity.md:83-99, 359"
     },
     {
       "id": "A7",
@@ -144,14 +144,14 @@
         "resource\\.error",
         "createResource\\s*\\("
       ],
-      "source": "async-and-actions.md:317-322, 243-246"
+      "source": "async-and-actions.md:332-337, 258-267"
     },
     {
       "id": "A9",
       "axis": "api",
       "title": "action invocation scope guard",
       "routed_reference": "async-and-actions.md",
-      "prompt": "A component defines `const save = action(async function* () { await api.save(); yield; setSaved(true); })` and then calls `save()` directly in the component body (or from a memo compute). Is that legal in beta.21? Where should the call live, and what failure is the guard preventing?",
+      "prompt": "A component defines `const save = action(async function* () { await api.save(); yield; setSaved(true); })` and then calls `save()` directly in the component body (or from a memo compute). Is that legal? Where should the call live, and what failure is the guard preventing?",
       "must_include": [
         "DEFINING the action during component setup is fine, but INVOKING it synchronously from an owned scope (component body, memo/effect compute) throws in dev with ACTION_CALLED_IN_OWNED_SCOPE",
         "invoke it from an event handler, effect apply/error callback, onSettled/tracked effect, or another IMPERATIVE scope",
@@ -160,14 +160,14 @@
       "must_not": [
         "call(?:ing)? it (?:directly )?in (?:the )?component body is (?:fine|legal|allowed)"
       ],
-      "source": "async-and-actions.md:266-272; reactivity.md:108-117"
+      "source": "async-and-actions.md:281-287; reactivity.md:108-117"
     },
     {
       "id": "A10",
       "axis": "api",
       "title": "falsy error identity and nested boundaries",
       "routed_reference": "async-and-actions.md",
-      "prompt": "In beta.21, what values reach user code for `Promise.reject(null)` under `<Errored>` / an effect `error` arm, and for an action generator that `throw undefined` — does the returned action Promise resolve or reject? Also, in `<Errored outer><Loading><Errored inner>...</Errored></Loading></Errored>`, which boundary catches an error from the inner content?",
+      "prompt": "What values reach user code for `Promise.reject(null)` under `<Errored>` / an effect `error` arm, and for an action generator that `throw undefined` — does the returned action Promise resolve or reject? Also, in `<Errored outer><Loading><Errored inner>...</Errored></Loading></Errored>`, which boundary catches an error from the inner content?",
       "must_include": [
         "error identity is exact even for nullish/falsy values: Promise.reject(null) reaches err() and the effect error arm as null, not an internal StatusError wrapper",
         "an action generator that throws undefined REJECTS its returned promise with undefined — it does not resolve successfully; do not infer success from error truthiness",
@@ -177,16 +177,16 @@
         "StatusError (?:is|will be) (?:passed|returned|received)",
         "action[^.]{0,80}resolves? (?:successfully )?(?:with )?undefined"
       ],
-      "source": "async-and-actions.md:317-322, 392-403; reactivity.md:66-70"
+      "source": "async-and-actions.md:332-337, 407-418; reactivity.md:66-70"
     },
     {
       "id": "A11",
       "axis": "api",
       "title": "empty async iterator settlement",
       "routed_reference": "async-and-actions.md",
-      "prompt": "A memo uses `createMemo(async function* () { return finalValue; })` and never yields. In beta.21, does its `<Loading>` fallback stay forever, and does `finalValue` become the memo value? What should the generator do to publish a final value?",
+      "prompt": "A memo uses `createMemo(async function* () { return finalValue; })` and never yields. Does its `<Loading>` fallback stay forever, and does `finalValue` become the memo value? What should the generator do to publish a final value?",
       "must_include": [
-        "an async iterator that completes without yielding now settles the memo to undefined, so Loading RELEASES instead of remaining forever (fixed in beta.17, still true in beta.21)",
+        "an async iterator that completes without yielding now settles the memo to undefined, so Loading RELEASES instead of remaining forever (fixed in beta.17, still true in beta.28)",
         "the generator's return value is DISCARDED for a memo — finalValue does not become the accessor value",
         "use yield finalValue to commit/publish the final value"
       ],
@@ -194,14 +194,14 @@
         "fallback (?:stays|remains|shows) (?:forever|indefinitely)",
         "return(?:ed)? value (?:is|becomes) (?:the )?(?:memo|accessor) value"
       ],
-      "source": "async-and-actions.md:63-73, 92-98"
+      "source": "async-and-actions.md:78-88, 107-113"
     },
     {
       "id": "A12",
       "axis": "api",
       "title": "createReaction re-arm replacement",
       "routed_reference": "reactivity.md",
-      "prompt": "For `const track = createReaction(cb); track(() => a()); track(() => b());`, both track calls happen before either source changes. In beta.21, what happens when `a` changes and then `b` changes? Is the reaction persistent, and how is it armed for another cycle?",
+      "prompt": "For `const track = createReaction(cb); track(() => a()); track(() => b());`, both track calls happen before either source changes. What happens when `a` changes and then `b` changes? Is the reaction persistent, and how is it armed for another cycle?",
       "must_include": [
         "the second track call REPLACES the first arm; changing a does nothing, then changing b fires cb exactly once",
         "createReaction is one-shot: the callback fires on the next invalidation and the reaction disarms",
@@ -211,7 +211,7 @@
         "both (?:a and b|sources) (?:fire|trigger)",
         "reaction (?:is|stays|remains) persistent"
       ],
-      "source": "reactivity.md:244-262"
+      "source": "reactivity.md:248-266"
     },
     {
       "id": "A13",
@@ -227,7 +227,7 @@
       "must_not": [
         "affects\\s*\\(\\s*\\w+\\s*,\\s*[\"'][^\"']+[\"']\\s*,\\s*[\"']"
       ],
-      "source": "async-and-actions.md:160-196"
+      "source": "async-and-actions.md:175-211"
     },
     {
       "id": "A14",
@@ -250,10 +250,11 @@
       "axis": "api",
       "title": "server function metadata: .GET / .withOptions removed",
       "routed_reference": "server-functions.md",
-      "prompt": "In beta.21, can you read `getUser.GET` or call `getUser.withOptions({...})` on a server function reference to check/configure its HTTP method? If not, what replaced them?",
+      "prompt": "Can you read `getUser.GET` or call `getUser.withOptions({...})` on a server function reference to check/configure its HTTP method? If not, what replaced them?",
       "must_include": [
         "no — the .GET proxy getter and .withOptions(init) are REMOVED with no compatibility shim",
         "declare the method with the GET(fn) wrapper (needs no compiler support, since a function-level \"use server\" round-trips the wrapper call) and attach arbitrary metadata with withMeta(fn, meta), which shallow-merges and composes with GET in either order",
+        "GET(fn) additionally permits HTTP GET but does not disable POST; a GET request to a function without GET is rejected with 405",
         "read metadata back structurally with getServerFunctionMetadata(fn) / isServerFunction(fn) — registered-symbol-brand detection, not property sniffing like the old fn.GET",
         "session-dynamic transport concerns (like a rotating auth header) belong in prepareRequest, a client-side hook that runs before every outgoing call — not in declaration-time metadata"
       ],
@@ -261,22 +262,23 @@
         "[Yy]es,? you can (?:read|access|call) `?\\w*\\.GET",
         "[Yy]es,? you can call `?\\w*\\.withOptions"
       ],
-      "source": "server-functions.md:119-176"
+      "source": "server-functions.md:121-186"
     },
     {
       "id": "A16",
       "axis": "api",
       "title": "respond/redirect/reload and isResponseEnvelope",
       "routed_reference": "server-functions.md",
-      "prompt": "A login server function does `if (bad) return respond({ error: 'bad' }, { status: 401 }); return redirect('/dashboard');`. What do `respond`/`redirect`/`reload` actually return, and how should client code detect that a return value is one of these envelopes — is `instanceof ResponseEnvelope` reliable?",
+      "prompt": "A login server function does `if (bad) return respond({ error: 'bad' }, { status: 401 }); return redirect('/dashboard');`. What do `respond`/`redirect`/`reload` actually return, and how should client code detect that a return value is one of these envelopes — is `instanceof ResponseEnvelope` reliable, and where does the exact revalidation header name come from?",
       "must_include": [
         "respond(value, init?) / redirect(url, init?) / reload(init?) all return a ResponseEnvelope — an in-memory value paired with HTTP response metadata (status/headers/revalidate); redirect defaults to 302, reload carries no value and just requests revalidation",
-        "check envelopes with isResponseEnvelope(v), never instanceof ResponseEnvelope — it's a registered-symbol brand specifically so it survives separately bundled client/server copies of the class; instanceof can silently fail across bundles"
+        "check envelopes with isResponseEnvelope(v), never instanceof ResponseEnvelope — it's a registered-symbol brand specifically so it survives separately bundled client/server copies of the class; instanceof can silently fail across bundles",
+        "import REVALIDATE_HEADER from the root @solidjs/web entry instead of hard-coding the X-Revalidate header name"
       ],
       "must_not": [
         "instanceof ResponseEnvelope (?:to check|is reliable|works)"
       ],
-      "source": "server-functions.md:85-117"
+      "source": "server-functions.md:86-119"
     },
     {
       "id": "A17",
@@ -289,7 +291,110 @@
         "put the affects() call inside an action() (the transaction), alongside the refresh()/awaited work, so the mark stays live until that transaction settles or reverts"
       ],
       "must_not": [],
-      "source": "async-and-actions.md:160-183"
+      "source": "async-and-actions.md:175-198"
+    },
+    {
+      "id": "A18",
+      "axis": "api",
+      "title": "reconcile default-id and positional modes",
+      "routed_reference": "stores.md",
+      "prompt": "What is the exact second argument of `reconcile(value, ...)`? Explain omitted, `null`, and missing-key behavior, plus what happens for an array/object shape mismatch and for a different root entity selected by the caller.",
+      "must_include": [
+        "the signature is reconcile(value, key?) where key is a string, key extractor, or null — it is not the old 1.x options object",
+        "omitting key defaults to the \"id\" property; null selects fully positional merging; an item missing the selected key falls back to positional matching",
+        "an array/object shape mismatch replaces the nested slot rather than leaving the wrong proxy shape",
+        "standalone reconcile throws when asked to merge a different root entity into the caller-selected slot; authoritative returned-root replacement belongs to projections/derived stores"
+      ],
+      "must_not": [],
+      "source": "stores.md:54-86; migration-map.md:174-193"
+    },
+    {
+      "id": "A19",
+      "axis": "api",
+      "title": "store shallow option overloads",
+      "routed_reference": "stores.md",
+      "prompt": "Importing store APIs from `solid-js`, which plain and derived `createStore` / `createOptimisticStore` overloads accept `{ shallow: true }` or `ProjectionOptions`? Is the broader `@solidjs/signals` plain optimistic overload safe to teach for a `solid-js` import?",
+      "must_include": [
+        "plain createStore(initial, { name?, shallow? }) accepts shallow, while derived createStore(derive, seed, ProjectionOptions) accepts name/key/shallow",
+        "through the published solid-js client typings, plain createOptimisticStore(initial) accepts NO options; only its derived overload accepts ProjectionOptions",
+        "although @solidjs/signals declares a broader plain optimistic options overload, do not teach it for code importing from solid-js"
+      ],
+      "must_not": [],
+      "source": "stores.md:31-52"
+    },
+    {
+      "id": "A20",
+      "axis": "api",
+      "title": "recursive JSX refs and applyRef typing",
+      "routed_reference": "typescript-setup.md",
+      "prompt": "A renderer library forwards nested Solid DOM refs. What shapes does `JSX.Ref<T>` allow, what is the generic `applyRef` signature, and which argument determines the concrete DOM element subtype?",
+      "must_include": [
+        "JSX.Ref<T> is recursive: a direct T, a RefCallback<T>, or an array of Ref<T>, so nested ref arrays type-check",
+        "applyRef<T extends Element = Element> accepts one callback or an array of callbacks whose element parameter is NoInfer<T>, plus element: T, and returns void",
+        "the actual element argument determines T; NoInfer prevents callback annotations from choosing or widening it, and library code should use applyRef rather than React-style ref objects or manually invoking refs"
+      ],
+      "must_not": [],
+      "source": "typescript-setup.md:59-95"
+    },
+    {
+      "id": "A21",
+      "axis": "api",
+      "title": "claimElementTree is integration-only",
+      "routed_reference": "control-flow-and-dom.md",
+      "prompt": "Should application code call `claimElementTree(root)` as a normal ref/hydration helper? What does Solid use it for, what descendants are claimed, and what does its server export do?",
+      "must_include": [
+        "claimElementTree is low-level renderer/integration infrastructure for frames, routers, and adopted or streamed SSR DOM — not an application ref, hydration, or DOM initialization idiom",
+        "on the client it sweep-claims navigation-relevant descendants such as a[href] and form[action] when DOM arrives without compiled creation code; on the server it is a no-op"
+      ],
+      "must_not": [],
+      "source": "control-flow-and-dom.md:232-238"
+    },
+    {
+      "id": "A22",
+      "axis": "api",
+      "title": "built-in no-JS flash and redirect protocol",
+      "routed_reference": "server-functions.md",
+      "prompt": "A browser submits a Solid server-function form with JavaScript disabled. What does core do by default with truthy and falsy ordinary returned/thrown outcomes versus a returned/thrown `Response`, where does it redirect, and how can an integration replay or disable this behavior?",
+      "must_include": [
+        "the built-in browser-form createNoJSHandler stores only a TRUTHY non-Response returned or thrown outcome in the one-shot flash cookie, then redirects to the request referer (or its configured base/fallback) with 303",
+        "a falsy outcome (0, false, empty string, null, or undefined) is not flashed because the runtime uses a truthiness guard; it still redirects, so the next render cannot replay that outcome",
+        "a returned or thrown Response is never flashed and preserves its headers and Location plus a valid redirect status; without a Location it redirects back",
+        "FLASH_COOKIE, hasFlashCookie, and clearFlashCookie are isomorphic exports; encodeFlashCookie/decodeFlashCookie/createNoJSHandler are server exports, and the cookie must be cleared on the following render even if decode fails",
+        "a custom handleNoJS is required for falsy-safe replay; a per-request handleNoJS overrides the configured/default handler, while server config may install a custom handler or set handleNoJS to null to disable the convention and return the normal serialized response",
+        "flash payloads are JSON and cookie-sized (roughly 4 KB); FormData/URLSearchParams become entry pairs and files are dropped"
+      ],
+      "must_not": [],
+      "source": "server-functions.md:263-314"
+    },
+    {
+      "id": "A23",
+      "axis": "api",
+      "title": "server-function transport integration seams",
+      "routed_reference": "server-functions.md",
+      "prompt": "An integration must send Date/Map arguments and consume a custom response/single-flight envelope. Which client hooks are responsible, is `codec` alone enough, what does `decodeResponsePayload` return, which server-side transform hooks mirror the integration, and what complete set of fields does `ServerFunctionOutcome` provide?",
+      "must_include": [
+        "default argument lists are JSON-safe only (apart from a single natively encoded body); Date, Map, Set, typed arrays, cycles and similar rich values require explicit serializeArgs with a matching server decoder — codec alone does not ship the rich argument serializer",
+        "responseHandler.capture runs synchronously at the call site and responseHandler.handle sees each response before normal decoding; a non-undefined return becomes the call result",
+        "decodeResponsePayload(response) returns { value, flightData? } and separates the single-flight envelope",
+        "server config exposes transformResult and transformDirectResult, with per-request transformResult overriding the configured default",
+        "ServerFunctionOutcome provides the complete set id, value, response, request, thrown, targetUrl, revalidateKeys, and foldedHeaders; targetUrl is the same-origin outcome Location or otherwise the referer, revalidateKeys are split, foldedHeaders include Set-Cookie effects, and foldSetCookies exposes the same cookie-folding operation for custom collection"
+      ],
+      "must_not": [],
+      "source": "server-functions.md:188-220, 245-261"
+    },
+    {
+      "id": "A24",
+      "axis": "api",
+      "title": "experimental frames surface and stability",
+      "routed_reference": "server-components.md",
+      "prompt": "Are Solid server components part of the stable 2.0 contract? Which package subpaths contain the client/server frame APIs, and name the key client and server integration exports without using the retired marker-range APIs.",
+      "must_include": [
+        "server components are an experimental preview outside Solid 2.0 stability guarantees and their versions should be pinned",
+        "the conditional entry is @solidjs/web/frames, with explicit @solidjs/web/frames/client and @solidjs/web/frames/server subpaths",
+        "client exports include installServerComponents, createFrameHost/createFrameElement, applyFrameResponse and isFrameStreamResponse; server exports include renderServerComponent, serverComponentResponse, frameTransformResult and frameTransformDirectResult, with Slot available on both sides"
+      ],
+      "must_not": [],
+      "source": "server-components.md:6-9, 68-78"
     },
     {
       "id": "B1",
@@ -306,7 +411,7 @@
         "getBoundingClientRect\\(\\)\\s* (?:inside|in) the ref",
         "createRenderEffect (?:reads|returns) zeros"
       ],
-      "source": "reactivity.md:296-327"
+      "source": "reactivity.md:300-331"
     },
     {
       "id": "B2",
@@ -324,7 +429,7 @@
         "post-paint",
         "yes,? (?:the user|there) would (?:see|be) a (?:visible )?flash"
       ],
-      "source": "reactivity.md:329-336"
+      "source": "reactivity.md:333-340"
     },
     {
       "id": "B3",
@@ -375,7 +480,7 @@
         "createAsync\\s*\\(",
         "Solid (?:auto-?|automatically |already )(?:cancels|aborts)"
       ],
-      "source": "async-and-actions.md:41-61"
+      "source": "async-and-actions.md:41-76"
     },
     {
       "id": "B6",
@@ -392,7 +497,7 @@
         "try\\s*/\\s*finally\\s+(?:is\\s+)?(?:enough|sufficient|reliable|fine)\\b",
         "Solid (?:does not|doesn't|never|won't) (?:call|invoke|drive)s?\\b[^.]{0,12}return"
       ],
-      "source": "patterns.md:196-224; async-and-actions.md:75-100"
+      "source": "patterns.md:199-227; async-and-actions.md:90-115"
     },
     {
       "id": "B7",
@@ -409,14 +514,14 @@
         "\\.loading\\b",
         "isRefreshing\\s*\\("
       ],
-      "source": "async-and-actions.md:111-159, 346-371"
+      "source": "async-and-actions.md:126-174, 361-386"
     },
     {
       "id": "B8",
       "axis": "pattern",
       "title": "onSettled cleanup only in an owned scope",
       "routed_reference": "reactivity.md",
-      "prompt": "Inside an event handler (not the component body) you call `onSettled(() => { const off = subscribe(); return () => off(); })`. Does that returned cleanup run? What changed in beta.16, and where should setup-with-teardown live instead?",
+      "prompt": "Inside an event handler (not the component body) you call `onSettled(() => { const off = subscribe(); return () => off(); })`. Does that returned cleanup run, how did the older behavior differ, and where should setup-with-teardown live instead?",
       "must_include": [
         "a returned cleanup from onSettled is only honored in an OWNED scope (a component body); fired out of band — from an event handler, a tracked effect, or another onSettled — there is no owner to bind to, so returning a cleanup is a dev error (SETTLED_CLEANUP_UNOWNED) and is dropped in production",
         "before beta.16 that out-of-band cleanup ran IMMEDIATELY, tearing down the setup the instant it was installed",
@@ -425,16 +530,16 @@
       "must_not": [
         "onMount\\b"
       ],
-      "source": "reactivity.md:195-217, 350; migration-map.md:30"
+      "source": "reactivity.md:195-217, 354; migration-map.md:30"
     },
     {
       "id": "B9",
       "axis": "pattern",
       "title": "store-in-store structural tracking",
       "routed_reference": "stores.md",
-      "prompt": "A derived store returns an inner store, and `<For each={outer.items}>` renders it. After the inner store is reconciled, direct reads show fresh rows but an older beta left `<For>` stale. What is the beta.21 contract for `<For>`/`mapArray`, `Object.keys`, `snapshot`, and `deep` through this wrapper? Should you clone the inner store as a workaround?",
+      "prompt": "A derived store returns an inner store, and `<For each={outer.items}>` renders it. After the inner store is reconciled, direct reads show fresh rows but an older release left `<For>` stale. What is the current contract for `<For>`/`mapArray`, `Object.keys`, `snapshot`, and `deep` through this wrapper? Should you clone the inner store as a workaround?",
       "must_include": [
-        "in beta.17+ (still true in beta.21) structural tracking chains through the outer wrapper to the inner store, so reconcile/add/delete invalidates <For>/mapArray and Object.keys as well as snapshot/deep",
+        "in beta.17+ (still true in beta.28) structural tracking chains through the outer wrapper to the inner store, so reconcile/add/delete invalidates <For>/mapArray and Object.keys as well as snapshot/deep",
         "structural consumers and direct property reads now stay consistent; the stale optimistic row bug through a wrapper is fixed",
         "do NOT clone the inner store as a workaround — update to beta.17 or newer and preserve the fine-grained store view"
       ],
@@ -442,14 +547,14 @@
         "(?:should|must|need to) clone (?:the )?(?:inner )?store",
         "<For> (?:cannot|does not|doesn't) track"
       ],
-      "source": "stores.md:78-99"
+      "source": "stores.md:153-175"
     },
     {
       "id": "B10",
       "axis": "pattern",
       "title": "lazy SSR identity and hydration",
       "routed_reference": "control-flow-and-dom.md",
-      "prompt": "An SSR app creates a lazy component from an `import.meta.glob` entry, so the `lazy()` callsite has no static `moduleUrl`. How does beta.21 hydrate it, how does the server find the asset identity, and what is `Lazy.moduleUrl` during that SSR request? Contrast that getter with a callsite that does supply `moduleUrl`. What happens if no identity exists at all?",
+      "prompt": "An SSR app creates a lazy component from an `import.meta.glob` entry, so the `lazy()` callsite has no static `moduleUrl`. How does Solid hydrate it, how does the server find the asset identity, and what is `Lazy.moduleUrl` during that SSR request? Contrast that getter with a callsite that does supply `moduleUrl`. What happens if no identity exists at all?",
       "must_include": [
         "the client matches preloaded lazy modules positionally by HYDRATION ID, not module identity, so a callsite without moduleUrl can hydrate",
         "the server waits for the import and uses the module's bundler-injected $$moduleUrl export when the callsite has no moduleUrl",
@@ -461,7 +566,7 @@
         "moduleUrl is required (?:on|at) (?:the )?client",
         "throws? (?:an error )?(?:when|if) (?:there is )?no (?:moduleUrl|identity)"
       ],
-      "source": "control-flow-and-dom.md:128-152"
+      "source": "control-flow-and-dom.md:136-163"
     },
     {
       "id": "B11",
@@ -476,7 +581,7 @@
       "must_not": [
         "writes? (?:right\\s+)?after\\s+(?:an?\\s+)?await\\s+(?:is|are)\\s+(?:transaction-?safe|fine|safe)"
       ],
-      "source": "async-and-actions.md:297-315"
+      "source": "async-and-actions.md:312-330"
     },
     {
       "id": "B12",
@@ -494,7 +599,95 @@
         "(?:server|SSR) renders? (?:the )?(?:dialog|portal(?:'s)? (?:content|children|markup))",
         "portal(?:'s)? children (?:render|evaluate) (?:on|during) (?:the )?server"
       ],
-      "source": "control-flow-and-dom.md:230-238"
+      "source": "control-flow-and-dom.md:249-265"
+    },
+    {
+      "id": "B13",
+      "axis": "pattern",
+      "title": "shallow store updates and list identity",
+      "routed_reference": "stores.md",
+      "prompt": "A shallow store contains rows. Why does `setRows(d => { d[0].label = \"new\" })` fail to notify, what update works, how does `reconcile` behave at that boundary, and how should rebuilt rows preserve DOM identity?",
+      "must_include": [
+        "shallow true makes only root properties or array slots reactive; nested records are raw, so mutating a nested field in place is reactively invisible",
+        "replace the root property or array slot with a new record reference",
+        "reconcile compares nested records by reference at a shallow boundary and replaces changed root slots instead of recursively mutating raw records",
+        "if refreshes rebuild row objects, preserve DOM identity at the consumer with <For keyed={row => row.id}>"
+      ],
+      "must_not": [],
+      "source": "stores.md:88-115"
+    },
+    {
+      "id": "B14",
+      "axis": "pattern",
+      "title": "projection authoritative root swap",
+      "routed_reference": "stores.md",
+      "prompt": "A `createProjection`/derived store switches from one root entity to another after the source key changes. Should it throw like standalone `reconcile`, and which descendants survive the switch?",
+      "must_include": [
+        "a returned new root from createProjection, derived createStore, or derived createOptimisticStore is authoritative: the root entity swaps and descendants of the old root do not survive",
+        "this deliberately differs from standalone reconcile, which is strict when the caller targets a different root entity"
+      ],
+      "must_not": [],
+      "source": "stores.md:124-133"
+    },
+    {
+      "id": "B15",
+      "axis": "pattern",
+      "title": "native objects in stores remain raw",
+      "routed_reference": "stores.md",
+      "prompt": "A store slot holds a `Map`, and another holds a user class instance. What is reactive, should `map.set()` notify, are all class instances raw, and can you import `markRaw` from `solid-js`?",
+      "must_include": [
+        "platform/native host objects such as Map, Date, DOM nodes and Headers are raw by default; reassigning their store slot is reactive but internal mutation such as map.set is not",
+        "replace the slot with a new object reference when consumers must update",
+        "user-defined class instances remain wrappable (unless frozen), so not every non-plain object is raw",
+        "markRaw is internal and is not a public solid-js root export; use shallow stores or reference replacement instead"
+      ],
+      "must_not": [],
+      "source": "stores.md:177-193"
+    },
+    {
+      "id": "B16",
+      "axis": "pattern",
+      "title": "lazy async memo survives observer gaps",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "A started lazy async memo temporarily loses its last subscriber, then gains one before the request settles. Does Solid restart/dispose the work? Contrast this with a synchronous or already-settled lazy memo, explain what happens if async work settles unobserved, and say whether iterator release eliminates the need for explicit resource cleanup.",
+      "must_include": [
+        "a synchronous or already-settled lazy memo autodisposes after losing its final subscriber and recomputes from scratch on the next read; a pending async memo is the exception",
+        "temporary loss of the final subscriber does not dispose a pending lazy async computation; a subscriber that returns before settlement rejoins the same in-flight work rather than starting a duplicate",
+        "if the computation settles while still unobserved, normal teardown resumes",
+        "Solid releases/closes an unobserved AsyncIterable, but deterministic external cleanup still belongs in a synchronous onCleanup before the first await/yield (AbortController, socket close, or iterator unblock/close)"
+      ],
+      "must_not": [],
+      "source": "async-and-actions.md:41-62; reactivity.md:233-244; patterns.md:176-197"
+    },
+    {
+      "id": "B17",
+      "axis": "pattern",
+      "title": "SSR dynamic/lazy shell gating",
+      "routed_reference": "control-flow-and-dom.md",
+      "prompt": "During streaming SSR, a pending `dynamic()`/`lazy()` component is rendered once inside `<Loading>` and once as an unbounded root hole. When can the first shell flush and where does resolved content appear?",
+      "must_include": [
+        "inside Loading, the pending component no longer gates the first shell: the fallback is emitted in the shell and resolved content streams later",
+        "without a boundary, the root hole still gates the first shell; the server waits and emits the resolved component inline rather than flushing an empty shell"
+      ],
+      "must_not": [],
+      "source": "control-flow-and-dom.md:128-134"
+    },
+    {
+      "id": "B18",
+      "axis": "pattern",
+      "title": "experimental server component setup and ownership",
+      "routed_reference": "server-components.md",
+      "prompt": "Show the current shape for a server component with a client-owned slot: how is it declared and consumed, what must run before hydrate/render, which Vite flag enables it, what state survives refetch, and what DOM seam must CSS account for?",
+      "must_include": [
+        "a server component is a component function returned by a server function; the client consumes its promise with dynamic(() => serverFn(...)) and passes client-owned positions as Slot props",
+        "call installServerComponents() explicitly before hydrate() or render(); a bare import is insufficient because the package is side-effect-free",
+        "enable vite-plugin-solid >= 3.0.0-next.16 with serverFunctions: { components: true }",
+        "the plugin wires endpoint frame responses; turnkey SSR also wires document rendering/adoption, while authored entries must install the frame render/bootstrap/client pieces themselves",
+        "server-owned HTML morphs in place while client-owned slot DOM identity and state survive updates; optional $key gives slot occurrence identity across reordering",
+        "the current boundary is a real dx-frame data-fid custom element, not an invisible marker range, so its inline-by-default CSS/layout seam must be handled"
+      ],
+      "must_not": [],
+      "source": "server-components.md:11-66, 75-85"
     },
     {
       "id": "C1",
@@ -629,7 +822,7 @@
         "solid-js/store",
         "classList="
       ],
-      "source": "migration-map.md:11-18, 34; control-flow-and-dom.md:174-183"
+      "source": "migration-map.md:11-18, 34; control-flow-and-dom.md:167-180"
     },
     {
       "id": "D4",
@@ -645,7 +838,7 @@
         "createSelector\\s*\\(",
         "use createSelector"
       ],
-      "source": "stores.md:47-76; migration-map.md:35"
+      "source": "stores.md:117-151; migration-map.md:35"
     },
     {
       "id": "D5",
@@ -661,7 +854,7 @@
         "refresh\\s*\\(\\s*\\w+\\s*\\)\\s*(?:alone\\s*)?(?:flips|sets|makes)\\s*isPending\\s*(?:to\\s*)?true",
         "isPending\\s*(?:\\([^)]*\\))?\\s*(?:becomes|is)\\s*true\\s*(?:on|during|for)\\s*(?:a\\s*)?(?:bare\\s*)?refresh"
       ],
-      "source": "async-and-actions.md:137-159, 198-219; migration-map.md:112"
+      "source": "async-and-actions.md:152-174, 213-234; migration-map.md:112"
     }
   ]
 }

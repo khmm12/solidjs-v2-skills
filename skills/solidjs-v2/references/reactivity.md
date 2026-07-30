@@ -1,6 +1,6 @@
 # Reactivity: batching, effects, ownership
 
-Verified against solid-js@2.0.0-beta.22 (published typings) and `next@8b371341` sources/tests.
+Verified against solid-js@2.0.0-beta.28 (published typings) and `next@90fcbd0a` sources/tests.
 
 ## Microtask batching — reads lag writes
 
@@ -230,10 +230,14 @@ onSettled(() => {
 const expensive = createMemo(() => heavy(source()), { lazy: true });
 ```
 
-- `lazy: true` defers the first computation until first read, and opts the memo
-  into **autodisposal**: when it loses its last subscriber it is torn down and
-  recomputed from scratch on next read. Default (non-lazy) owned memos live for
-  their owner's lifetime; unowned memos always autodispose.
+- `lazy: true` defers the first computation until first read, and opts a
+  synchronous/settled memo into **autodisposal**: when it loses its last
+  subscriber it is torn down and recomputed from scratch on next read. A
+  pending async memo is the exception in beta.28: temporary loss of its final
+  subscriber preserves the in-flight computation, and a new subscriber rejoins
+  it. If it settles while still unobserved, normal teardown resumes. Default
+  (non-lazy) owned memos live for their owner's lifetime; unowned memos normally
+  autodispose. See `async-and-actions.md` for async cleanup rules.
 - `unobserved: () => ...` (on `createSignal` and `createMemo`) fires when the
   node loses all subscribers — for tearing down external resources (sockets,
   subscriptions) that should only exist while observed. Combine with `lazy` for

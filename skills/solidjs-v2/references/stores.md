@@ -1,6 +1,6 @@
 # Stores: drafts, projections, helpers
 
-Verified against solid-js@2.0.0-beta.22 (published typings) and `next@8b371341` sources/tests.
+Verified against solid-js@2.0.0-beta.28 (published typings) and `next@90fcbd0a` sources/tests.
 All store APIs are exported from `solid-js` (the `solid-js/store` subpath is gone).
 
 ## Draft-first setters (produce is the default)
@@ -28,21 +28,91 @@ setStore(s => {
   participate in batching, transitions, or optimistic rollback. Use
   `createStore` with draft setters.
 
-## `reconcile(value, key)` — keyed diffing into a subtree
+## Store option surfaces
+
+```ts
+interface ProjectionOptions {
+  name?: string;
+  key?: string | ((item: any) => any) | null;
+  shallow?: boolean;
+}
+
+createStore(initial, { name?: string, shallow?: boolean });
+createStore(derive, seed, options?: ProjectionOptions);
+createOptimisticStore(initial); // no options in solid-js client typings
+createOptimisticStore(derive, seed, options?: ProjectionOptions);
+```
+
+`key` and `shallow` apply to projection reconciliation. The plain
+`createStore(initial, options)` form accepts only `name` and `shallow`; it has
+no keyed derive to configure. With the public `solid-js` client typings, plain
+`createOptimisticStore(initial)` accepts no options, so shallow/options require
+the derived form. This is an export-layer typing footgun: the underlying
+`@solidjs/signals` root declaration has a plain options overload, but do not
+teach that overload to code importing these APIs from `solid-js`.
+
+## `reconcile(value, key)` — keyed or positional diffing
+
+Published signature:
+
+```ts
+reconcile<T extends U, U>(
+  value: T,
+  key?: string | ((item: any) => any) | null
+): (state: U) => void;
+```
 
 Returns a draft-setter function. Call it *inside* the setter, targeting the
 part of the draft to reconcile (identity preserved for unchanged entries):
 
 ```ts
-setStore(s => {
-  reconcile(serverTodos, "id")(s.todos);
-});
+setStore(s => { reconcile(serverTodos)(s.todos); }); // omitted key = "id"
 // or for the whole store:
-setStore(reconcile(serverState, "id"));
+setStore(reconcile(serverState, null)); // fully positional
 ```
 
-`key` is a property name or extractor function. Symbol-keyed nodes are diffed
-too, not just string keys.
+`key` is a property name or extractor function; omission defaults to `"id"`.
+Pass `null` for a fully positional merge. In keyed arrays an item missing the
+chosen key still falls back to its position rather than becoming a keyed
+entity. Symbol-keyed nodes are diffed too, not just string keys.
+
+Two boundaries matter:
+
+- If an array slot changes shape (array ↔ object), the slot is replaced; Solid
+  never leaves an array proxy fronting an object or vice versa.
+- Standalone `reconcile` is intentionally strict at the root selected by the
+  caller: reconciling a different keyed root entity throws instead of silently
+  changing what that slot represents. Projection return values use the
+  authoritative-swap rule described below.
+
+## Shallow stores — reactive root, raw records
+
+`{ shallow: true }` makes only the root object properties or array slots
+reactive. Nested records are returned raw and compared/replaced by reference;
+mutating a field inside one is invisible to Solid. Replace the root slot:
+
+```ts
+const [rows, setRows] = createStore([{ id: 1, label: "old" }], {
+  shallow: true
+});
+
+// Wrong: rows[0] is raw; no reactive slot changed.
+setRows(draft => { draft[0].label = "new"; });
+// Right: root slot replacement is reactive.
+setRows(draft => { draft[0] = { ...draft[0], label: "new" }; });
+```
+
+`reconcile` respects the shallow boundary: it compares nested records by
+reference and replaces changed root slots instead of recursively mutating the
+raw records. If a server refresh rebuilds every row object, preserve DOM row
+identity at the consumer with an explicit key:
+
+```tsx
+<For each={rows} keyed={row => row.id}>{row => <Row row={row} />}</For>
+```
+
+Use shallow mode only when records are immutable-by-convention. In-place
+nested mutation is the central footgun.
 
 ## Derived stores: the memo/signal split, mirrored
 
@@ -53,7 +123,12 @@ too, not just string keys.
 
 The derive function receives a **draft** it can mutate. If it **returns** a
 value (sync or async — Promise/AsyncIterable supported), that value is
-**reconciled** into the output keyed by `options.key` (default `"id"`).
+**reconciled** into the output keyed by `options.key` (default `"id"`; use
+`null` for positional reconciliation). A returned new root is authoritative:
+`createProjection`, derived `createStore`, and derived
+`createOptimisticStore` swap the root entity and discard its descendants when
+the root identity/shape changes. This differs deliberately from standalone
+`reconcile`, where the caller-selected different root entity is an error.
 `seed` is the real backing host object/array — an explicit seed, not a
 memo-style "initial value".
 
@@ -75,12 +150,13 @@ const [cache, setCache] = createStore(draft => { draft.x = compute(); }, { x: 0 
 setCache(s => { s.override = true; });
 ```
 
-### Store-in-store views track structure
+### Store-in-store views stay live
 
-A derived store may return or contain another store. Structural consumers of
-that wrapper — `<For>`/`mapArray`, `Object.keys`, `snapshot`, and `deep` — track
-through to the wrapped store in beta.17. Adds/deletes and `reconcile()` on the
-inner store therefore invalidate the outer view; direct property reads and
+A derive may return a foreign store or include one in its returned root. That
+does not turn it into a one-time snapshot: the chain stays live. Structural
+consumers of the wrapper — `<For>`/`mapArray`, `Object.keys`, `snapshot`, and
+`deep` — track through to the wrapped store. Adds/deletes and `reconcile()` on
+the inner store therefore invalidate the outer view; direct property reads and
 enumeration stay consistent:
 
 ```tsx
@@ -97,6 +173,24 @@ Before beta.17, a structural consumer could stay stale through this wrapper
 (for example, an optimistic row survived in `<For>` after refreshed data had
 already reached direct property reads). Do not work around it by cloning the
 inner store; update to beta.17 or newer.
+
+## Raw platform objects and class instances
+
+Platform/native host objects (`Map`, `Date`, DOM nodes, `Headers`, and similar
+branded built-ins) are raw by default. A store slot containing one is reactive
+when reassigned, but mutating the object's internal state (`map.set(...)`,
+`date.setTime(...)`) is not tracked:
+
+```ts
+const [state, setState] = createStore({ cache: new Map<string, number>() });
+setState(s => { s.cache.set("a", 1); });             // internal mutation: inert
+setState(s => { s.cache = new Map(s.cache).set("a", 1); }); // reactive slot swap
+```
+
+User-defined class instances remain wrappable (unless frozen), so do not infer
+that every non-plain object is raw. `markRaw` exists only in store internals;
+it is **not** a public `solid-js` root export. Do not import or teach it as an
+application API—use shallow stores or reference replacement instead.
 
 Function-form `createSignal` (the "writable memo") completes the picture:
 

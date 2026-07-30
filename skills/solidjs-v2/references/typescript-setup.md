@@ -1,6 +1,6 @@
 # TypeScript, JSX, imports, project setup
 
-Verified against solid-js@2.0.0-beta.22 / @solidjs/web@2.0.0-beta.22 typings.
+Verified against solid-js@2.0.0-beta.28 / @solidjs/web@2.0.0-beta.28 typings.
 
 ## Import paths
 
@@ -56,6 +56,44 @@ JSX helper types were reshaped in 2.0 (e.g. `JSX.ClassValue` for the
 object/array `class` prop) — verify names against the installed typings
 rather than 1.x memory.
 
+## DOM ref typing and `applyRef`
+
+`JSX.Ref<T>` is recursive and includes direct assignment, a callback, or nested
+arrays of either shape:
+
+```ts
+type RefCallback<T> = (el: T) => void;
+type Ref<T> = T | RefCallback<T> | Ref<T>[];
+```
+
+This is why `ref={[first, [second, third]]}` type-checks. Library code that has
+resolved refs to invoke should use the renderer's `applyRef` helper. Its beta.28
+client typing is:
+
+```ts
+declare function applyRef<T extends Element = Element>(
+  callbacks:
+    | ((element: NoInfer<T>) => void)
+    | ((element: NoInfer<T>) => void)[],
+  element: T
+): void;
+```
+
+That block is the published declaration, not code to paste beside an import.
+Application/library usage imports the real function:
+
+```ts
+import { applyRef } from "@solidjs/web";
+
+applyRef<HTMLButtonElement>(button => button.focus(), buttonElement);
+```
+
+Here `Element` is the DOM type, not Solid's renderer-neutral renderable
+`Element`. `NoInfer<T>` keeps callback parameter annotations from choosing or
+widening `T`; the actual `element` argument determines the element subtype.
+Do not call ref callbacks by hand or replace `applyRef` with React-style ref
+object handling.
+
 ## Context typing
 
 `createContext<T>()` (no default) is `Context<T>` — `useContext` returns `T`,
@@ -78,7 +116,7 @@ const [todos, { addTodo }] = useContext(TodosContext);
 primitive config (theme, locale). App-wide state doesn't need Context at all:
 a module-scope signal/store *is* a global.
 
-## Known typing traps (beta.21, unchanged in beta.22)
+## Known typing traps (beta.21, unchanged in beta.28)
 
 - `createSignal<T>(value)` with a generic `T` can fail the
   `Exclude<T, Function>` value overload — seed via the compute-fn overload:
