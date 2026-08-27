@@ -26,7 +26,7 @@ whole product. There is no build step and no tests; verification is editorial.
 
 ## Ground truth, in priority order
 
-Solid 2.0 docs are beta-RFCs ("proposal-shaped") and drift from reality in
+Solid 2.0 docs are prerelease RFCs ("proposal-shaped") and drift from reality in
 both directions. When sources disagree:
 
 1. **Published npm typings** (`solid-js`, `@solidjs/web`, `@solidjs/signals`
@@ -34,10 +34,8 @@ both directions. When sources disagree:
 2. Upstream repo sources and tests (`packages/solid*/src`, `test/*.spec.ts`).
 3. RFC docs / MIGRATION.md / CHEATSHEET.
 
-Before documenting any beta-only API, grep the upstream `.changeset/` directory
-for its scheduled fate (precedent: `isRefreshing` was a public `solid-js`
-export from beta.0 through beta.14, with its removal queued in `.changeset/` —
-and duly removed code, typings, and docs together in beta.15).
+Before documenting any prerelease-only API, grep the upstream `.changeset/`
+directory for its scheduled fate.
 
 ## Editing rules
 
@@ -46,7 +44,7 @@ and duly removed code, typings, and docs together in beta.15).
   cleanup pass later. Don't invent replacements for removed APIs; if upstream
   has no equivalent, say so explicitly.
 - Idioms taught here should be **compile-verified**: typecheck a sample using
-  them against the installed beta (`tsc` in any project pinned to the target
+  them against the installed prerelease (`tsc` in any project pinned to the target
   version) — grep for old names is not verification.
 - **New teaching content gets an eval question.** When a reference file gains a
   new rule or footgun, add (or update) a question in `evals/questions.json` — see
@@ -89,15 +87,15 @@ reference content.
   answer-provider CLI plus the Claude grader unless `--no-grade` is used, and
   spends tokens — run it manually, not in CI.
 
-## When the solid beta advances
+## When the Solid prerelease advances
 
 1. Refresh `references/cheatsheet.md` from upstream
    `packages/solid/CHEATSHEET.md`; update the attribution header (commit SHA +
    package version).
 2. Diff upstream `documentation/solid-2.0/` and `.changeset/` since the last
    anchored commit; fold API changes into the affected reference files.
-3. Re-verify drift-prone claims against the new published typings
-   (deprecation caveats like `isRefreshing`, `refresh()` cascade semantics).
+3. Re-verify drift-prone claims against the new published typings (removed
+   exports, option overloads, and `refresh()`/pending semantics).
 4. Bump version markers in reference files, `version` in both plugin manifests,
    and the anchor commit/version in README.
 5. Re-run `evals/` and fix any question whose answer key moved — a removed or

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "target": "solid-js@2.0.0-beta.28 / @solidjs/web@2.0.0-beta.28",
+    "target": "solid-js@2.0.0-rc.3 / @solidjs/web@2.0.0-rc.3",
     "note": "Single source of truth for the skill exam. Every must_include claim is sourced from a verified reference file (see `source`). Do NOT add a claim you cannot trace to a reference or installed typings — a wrong answer key silently inverts the eval. must_not entries are regexes that ONLY appear in wrong answers (safe for a fast pre-fail); semantic negatives are encoded as positive must_include claims instead.",
     "axes": {
       "api": "API understanding — signatures, what exists / what was removed",
@@ -8,7 +8,7 @@
       "react": "Solid vs React — does the model drag React reflexes over",
       "v1": "Solid 2.0 vs 1.x — does the model fall back to 1.x APIs"
     },
-    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-beta.28, @solidjs/web). "
+    "version_preamble": "In a Solid 2.0 project (solid-js 2.0.0-rc.3, @solidjs/web 2.0.0-rc.3). "
   },
   "questions": [
     {
@@ -67,18 +67,18 @@
     {
       "id": "A4",
       "axis": "api",
-      "title": "isRefreshing removed in beta.15",
+      "title": "loadingValue and seedLoadingValue",
       "routed_reference": "async-and-actions.md",
-      "prompt": "Can you import `isRefreshing` from `solid-js` to show a 'refreshing…' indicator? If not, what do you use instead?",
+      "prompt": "Contrast `loadingValue` on an async memo with `seedLoadingValue: true` on a derived store. What do consumers, `<Loading>`, and `isPending` observe before the first answer, what happens on later refetches, and how do declared versus bare `ssrSource: \"client\"` forms render?",
       "must_include": [
-        "isRefreshing is GONE from solid-js public exports (it was public beta.0-beta.14, removed in beta.15) — do not import it",
-        "there is no drop-in public replacement; use isPending(() => x()) and/or <Loading> to observe readiness, or affects()+refresh() to make a specific reload read as pending"
+        "loadingValue gives a memo/signal-family derived source a committed first value; seedLoadingValue: true makes a derived store's seed that committed first value",
+        "before the first real answer the source reads as settled: it does not suspend <Loading>, hold a transition, or make isPending(source) true — first-load UI must branch on the provisional value itself",
+        "after the first answer lands the provisional value leaves the lineage forever; later refetches use ordinary stale-value/pending semantics",
+        "the memo loadingValue is also the compute's first prev",
+        "with ssrSource client, a declared loading/seed value renders as commit #0 on the server and through hydration; a bare client source is a structural hole that suspends the nearest Loading fallback and is an error outside a boundary"
       ],
-      "must_not": [
-        "import\\s*\\{[^}]*isRefreshing",
-        "yes, you can import isRefreshing"
-      ],
-      "source": "async-and-actions.md:243-252"
+      "must_not": [],
+      "source": "async-and-actions.md loadingValue / seedLoadingValue section"
     },
     {
       "id": "A5",
@@ -94,7 +94,7 @@
       "must_not": [
         "return(?:ed)?\\s+value\\s+(?:is\\s+|becomes\\s+)(?:the\\s+)?committed"
       ],
-      "source": "async-and-actions.md:78-88, 298-305"
+      "source": "async-and-actions.md async generator and action sections"
     },
     {
       "id": "A6",
@@ -105,12 +105,12 @@
       "must_include": [
         "an uncaught error that escapes EVERY boundary PERMANENTLY halts reactivity (REACTIVITY_HALTED): it rethrows as an uncaught exception, then all further writes and flushes are silently ignored — it is an app crash with no automatic recovery",
         "the fix is to wrap the fallible reactive code in an error boundary (createErrorBoundary / <Errored>) — a boundary that handles the error keeps the system alive; you do not defuse the halt",
-        "resetErrorHalt is imported from @solidjs/signals (NOT re-exported from solid-js) and exists for tests/dev tooling only — it is not an app-level production recovery hook"
+        "resetErrorHalt is re-exported from solid-js for tests/dev tooling; the browser render() and refresh runtime revive a halt in dev, but production remains a hard crash and the server export is a no-op"
       ],
       "must_not": [
-        "import\\s*\\{[^}]*resetErrorHalt[^}]*\\}\\s*from\\s*[\"']solid-js[\"']"
+        "resetErrorHalt[^.]{0,80}(?:production recovery|recover production)"
       ],
-      "source": "reactivity.md:83-99, 359"
+      "source": "reactivity.md uncaught errors section; dev diagnostics table"
     },
     {
       "id": "A7",
@@ -136,7 +136,7 @@
       "routed_reference": "async-and-actions.md",
       "prompt": "Inside an `action(async function* () { … })`, an awaited server call rejects and nothing catches it. Does the app freeze? What happens to the returned promise and to the optimistic writes? Separately: if you `await resolve(() => user())` and the underlying source rejected, what do you get back?",
       "must_include": [
-        "an uncaught error in an async-generator action REJECTS the returned promise and completes the transition, so the optimistic writes revert and the caller can `.catch` — it does NOT freeze the thread (a beta.16 fix)",
+        "an uncaught error in an async-generator action REJECTS the returned promise and completes the transition, so the optimistic writes revert and the caller can `.catch` — it does NOT halt reactivity",
         "a try/catch around the yield/await still handles an awaited rejection locally",
         "resolve(() => user()) REJECTS with the source's own error if the source rejected"
       ],
@@ -144,7 +144,7 @@
         "resource\\.error",
         "createResource\\s*\\("
       ],
-      "source": "async-and-actions.md:332-337, 258-267"
+      "source": "async-and-actions.md action errors and latest/resolve/refresh sections"
     },
     {
       "id": "A9",
@@ -160,7 +160,7 @@
       "must_not": [
         "call(?:ing)? it (?:directly )?in (?:the )?component body is (?:fine|legal|allowed)"
       ],
-      "source": "async-and-actions.md:281-287; reactivity.md:108-117"
+      "source": "async-and-actions.md action section; reactivity.md no writes or action calls section"
     },
     {
       "id": "A10",
@@ -177,7 +177,7 @@
         "StatusError (?:is|will be) (?:passed|returned|received)",
         "action[^.]{0,80}resolves? (?:successfully )?(?:with )?undefined"
       ],
-      "source": "async-and-actions.md:332-337, 407-418; reactivity.md:66-70"
+      "source": "async-and-actions.md action errors and Errors one path sections; reactivity.md effect error handling section"
     },
     {
       "id": "A11",
@@ -186,7 +186,7 @@
       "routed_reference": "async-and-actions.md",
       "prompt": "A memo uses `createMemo(async function* () { return finalValue; })` and never yields. Does its `<Loading>` fallback stay forever, and does `finalValue` become the memo value? What should the generator do to publish a final value?",
       "must_include": [
-        "an async iterator that completes without yielding now settles the memo to undefined, so Loading RELEASES instead of remaining forever (fixed in beta.17, still true in beta.28)",
+        "an async iterator that completes without yielding settles the memo to undefined, so Loading RELEASES instead of remaining forever",
         "the generator's return value is DISCARDED for a memo — finalValue does not become the accessor value",
         "use yield finalValue to commit/publish the final value"
       ],
@@ -194,7 +194,7 @@
         "fallback (?:stays|remains|shows) (?:forever|indefinitely)",
         "return(?:ed)? value (?:is|becomes) (?:the )?(?:memo|accessor) value"
       ],
-      "source": "async-and-actions.md:78-88, 107-113"
+      "source": "async-and-actions.md async generator section"
     },
     {
       "id": "A12",
@@ -211,7 +211,7 @@
         "both (?:a and b|sources) (?:fire|trigger)",
         "reaction (?:is|stays|remains) persistent"
       ],
-      "source": "reactivity.md:248-266"
+      "source": "reactivity.md createReaction section"
     },
     {
       "id": "A13",
@@ -224,26 +224,25 @@
         "affects(state, \"user\", \"name\") is a type error — a three-argument call: keys do not form a path like a 1.x store path (which would ambiguously mark sibling slots); mark several slots with several calls, or target the nested record directly",
         "the mark is snapshot-at-declaration: affects(store) covers only records reachable from the store at the moment of the call — records added to the store afterward are NOT covered"
       ],
-      "must_not": [
-        "affects\\s*\\(\\s*\\w+\\s*,\\s*[\"'][^\"']+[\"']\\s*,\\s*[\"']"
-      ],
-      "source": "async-and-actions.md:175-211"
+      "must_not": [],
+      "source": "async-and-actions.md affects section"
     },
     {
       "id": "A14",
       "axis": "api",
       "title": "server function validation must live in the body, not a wrapper",
       "routed_reference": "server-functions.md",
-      "prompt": "You write `export const getUser = withValidation(userIdSchema, async (id) => { \"use server\"; return db.users.find(id); })`, hoping `withValidation` rejects bad ids before the function body runs. Does that work? Why or why not, and where must the check actually live?",
+      "prompt": "You write `export const getUser = withValidation(userIdSchema, async (id) => { \"use server\"; return db.users.find(id); })`, hoping `withValidation` rejects bad ids before the function body runs. Does that work? Why or why not, and where must the check actually live? Also contrast wrapping an export in a module-level `use server` file.",
       "must_include": [
         "no — a wrapper wraps the reference, not the registered function: registerServerReference(id, fn) registers the RAW inner function for HTTP dispatch before any wrapper runs, so wrapper-position code like withValidation can only affect the client transport, never the actual HTTP dispatch path",
-        "arguments are untrusted input at the dispatch path regardless of the TypeScript types on the reference; validation/auth/rate-limiting must be lines of code INSIDE the function body itself — there is no core/router validation helper"
+        "arguments are untrusted input at the dispatch path regardless of the TypeScript types on the reference; validation/auth/rate-limiting must be lines of code INSIDE the function body itself — there is no core/router validation helper",
+        "a wrapped export in a module-level use server file is a COMPILE ERROR; put the directive inside the wrapped function so the wrapper can compose around each build's reference"
       ],
       "must_not": [
         "wrapper(?:s)? (?:can|do|will) (?:validate|reach|run on) (?:the )?(?:HTTP )?dispatch",
         "withValidation[^.]{0,40}\\bworks\\b"
       ],
-      "source": "server-functions.md:27-48"
+      "source": "server-functions.md directive and trust-boundary section"
     },
     {
       "id": "A15",
@@ -262,7 +261,7 @@
         "[Yy]es,? you can (?:read|access|call) `?\\w*\\.GET",
         "[Yy]es,? you can call `?\\w*\\.withOptions"
       ],
-      "source": "server-functions.md:121-186"
+      "source": "server-functions.md GET withMeta and prepareRequest sections"
     },
     {
       "id": "A16",
@@ -278,7 +277,7 @@
       "must_not": [
         "instanceof ResponseEnvelope (?:to check|is reliable|works)"
       ],
-      "source": "server-functions.md:86-119"
+      "source": "server-functions.md response helpers section"
     },
     {
       "id": "A17",
@@ -291,7 +290,7 @@
         "put the affects() call inside an action() (the transaction), alongside the refresh()/awaited work, so the mark stays live until that transaction settles or reverts"
       ],
       "must_not": [],
-      "source": "async-and-actions.md:175-198"
+      "source": "async-and-actions.md affects section"
     },
     {
       "id": "A18",
@@ -329,12 +328,12 @@
       "routed_reference": "typescript-setup.md",
       "prompt": "A renderer library forwards nested Solid DOM refs. What shapes does `JSX.Ref<T>` allow, what is the generic `applyRef` signature, and which argument determines the concrete DOM element subtype?",
       "must_include": [
-        "JSX.Ref<T> is recursive: a direct T, a RefCallback<T>, or an array of Ref<T>, so nested ref arrays type-check",
+        "JSX.Ref<T> is recursive: a direct T, a RefCallback<T>, undefined, or an array of Ref<T>, so nested ref arrays type-check",
         "applyRef<T extends Element = Element> accepts one callback or an array of callbacks whose element parameter is NoInfer<T>, plus element: T, and returns void",
         "the actual element argument determines T; NoInfer prevents callback annotations from choosing or widening it, and library code should use applyRef rather than React-style ref objects or manually invoking refs"
       ],
       "must_not": [],
-      "source": "typescript-setup.md:59-95"
+      "source": "typescript-setup.md DOM ref typing and applyRef section"
     },
     {
       "id": "A21",
@@ -347,7 +346,7 @@
         "on the client it sweep-claims navigation-relevant descendants such as a[href] and form[action] when DOM arrives without compiled creation code; on the server it is a no-op"
       ],
       "must_not": [],
-      "source": "control-flow-and-dom.md:232-238"
+      "source": "control-flow-and-dom.md claimElementTree section"
     },
     {
       "id": "A22",
@@ -364,23 +363,23 @@
         "flash payloads are JSON and cookie-sized (roughly 4 KB); FormData/URLSearchParams become entry pairs and files are dropped"
       ],
       "must_not": [],
-      "source": "server-functions.md:263-314"
+      "source": "server-functions.md No-JS progressive enhancement section"
     },
     {
       "id": "A23",
       "axis": "api",
       "title": "server-function transport integration seams",
       "routed_reference": "server-functions.md",
-      "prompt": "An integration must send Date/Map arguments and consume a custom response/single-flight envelope. Which client hooks are responsible, is `codec` alone enough, what does `decodeResponsePayload` return, which server-side transform hooks mirror the integration, and what complete set of fields does `ServerFunctionOutcome` provide?",
+      "prompt": "An integration must send Date/Map arguments and consume a custom response/single-flight envelope. What is the standard rich-argument opt-in, which client hooks consume custom responses, is `codec` alone enough, what does `decodeResponsePayload` return, which server-side transform hooks mirror the integration, and what complete set of fields does `ServerFunctionOutcome` provide?",
       "must_include": [
-        "default argument lists are JSON-safe only (apart from a single natively encoded body); Date, Map, Set, typed arrays, cycles and similar rich values require explicit serializeArgs with a matching server decoder — codec alone does not ship the rich argument serializer",
+        "default argument lists are JSON-safe only (apart from a single natively encoded body); Date, Map, Set, typed arrays, cycles and similar rich values require calling enableRichArguments() from @solidjs/web/server-functions/rich-args — importing that entry installs serializeArgs and opts the bundle into the encoder; codec alone is not enough",
         "responseHandler.capture runs synchronously at the call site and responseHandler.handle sees each response before normal decoding; a non-undefined return becomes the call result",
         "decodeResponsePayload(response) returns { value, flightData? } and separates the single-flight envelope",
         "server config exposes transformResult and transformDirectResult, with per-request transformResult overriding the configured default",
         "ServerFunctionOutcome provides the complete set id, value, response, request, thrown, targetUrl, revalidateKeys, and foldedHeaders; targetUrl is the same-origin outcome Location or otherwise the referer, revalidateKeys are split, foldedHeaders include Set-Cookie effects, and foldSetCookies exposes the same cookie-folding operation for custom collection"
       ],
       "must_not": [],
-      "source": "server-functions.md:188-220, 245-261"
+      "source": "server-functions.md transport integration and single-flight sections"
     },
     {
       "id": "A24",
@@ -394,7 +393,100 @@
         "client exports include installServerComponents, createFrameHost/createFrameElement, applyFrameResponse and isFrameStreamResponse; server exports include renderServerComponent, serverComponentResponse, frameTransformResult and frameTransformDirectResult, with Slot available on both sides"
       ],
       "must_not": [],
-      "source": "server-components.md:6-9, 68-78"
+      "source": "server-components.md introduction and stream ownership sections"
+    },
+    {
+      "id": "A25",
+      "axis": "api",
+      "title": "Promise of AsyncIterable flattening",
+      "routed_reference": "async-and-actions.md",
+      "prompt": "A server function returns `Promise<AsyncIterable<Message>>`, and a memo returns that promise directly. Does the memo settle to the iterable object, or stream it? Is a `yield* await serverFn()` adapter required?",
+      "must_include": [
+        "Solid flattens the Promise<AsyncIterable> as one async computation and streams the iterable; each yielded item becomes a committed memo value",
+        "no yield* await adapter is required"
+      ],
+      "must_not": [
+        "settles? (?:to|with) (?:the )?(?:AsyncIterable|iterable) object"
+      ],
+      "source": "async-and-actions.md async lives in computations section"
+    },
+    {
+      "id": "A26",
+      "axis": "api",
+      "title": "fully settled SSR string",
+      "routed_reference": "control-flow-and-dom.md",
+      "prompt": "How do you obtain a fully settled async HTML string in @solidjs/web 2.0 rc.3? Does `renderToStringAsync` exist, and can you also pipe/read the same render after awaiting it?",
+      "must_include": [
+        "renderToStringAsync does not exist; use await renderToStream(code, options), because the returned stream is PromiseLike<string> and awaiting it yields the fully settled HTML",
+        "the render has one consumer: choose await, pipe(), pipeTo(), or readable; mixing distinct consumers throws"
+      ],
+      "must_not": [
+        "import\\s*\\{[^}]*renderToStringAsync"
+      ],
+      "source": "control-flow-and-dom.md rendering entries section"
+    },
+    {
+      "id": "A27",
+      "axis": "api",
+      "title": "server-function security defaults",
+      "routed_reference": "server-functions.md",
+      "prompt": "What happens to a plain Error thrown by a production server function, how do you intentionally expose a safe client-facing error, and what same-origin/CSRF protection does the handler apply by default?",
+      "must_include": [
+        "outside the development build condition, plain thrown values are sanitized to a generic Error(\"Internal Server Error\") without the original message, stack, or own properties; the build variant, not NODE_ENV, selects this",
+        "use respond(...) / a thrown envelope, or markSafeError(error) from @solidjs/web for intentional client-facing error content; isSafeError is the cross-bundle-safe check",
+        "server-function HTTP calls have same-origin csrf protection enabled by default; csrf: false is only for an endpoint already protected by another trusted layer"
+      ],
+      "must_not": [
+        "production[^.]{0,100}(?:sends|serializes|preserves)[^.]{0,80}(?:stack|original message)"
+      ],
+      "source": "server-functions.md runtime split and thrown errors sections"
+    },
+    {
+      "id": "A28",
+      "axis": "api",
+      "title": "server setter writes are deprecated",
+      "routed_reference": "reactivity.md",
+      "prompt": "During SSR, code writes a signal, a store, and an optimistic store from subscription callbacks. What happens today, and what model should replace those writes?",
+      "must_include": [
+        "server setter writes emit a [SERVER_WRITE] deprecation warning once per process/category and are intended to become errors",
+        "signal and store writes only change inert data for later reads/serialization and never re-render; optimistic writes are complete no-ops and their setter callback does not run",
+        "model server changes as async computation sources; return a subscription as an AsyncIterable instead of pushing through setters"
+      ],
+      "must_not": [
+        "server[^.]{0,80}(?:setter|signal|store) writes?[^.]{0,80}(?:re-render|rerender)"
+      ],
+      "source": "reactivity.md server rendering is setter-free section"
+    },
+    {
+      "id": "A29",
+      "axis": "api",
+      "title": "diagnostics harness",
+      "routed_reference": "reactivity.md",
+      "prompt": "For an automated reactivity regression test, what published package captures structured diagnostics and recompute budgets instead of scraping console output? Name the core capture helper and representative assertions.",
+      "must_include": [
+        "use @solidjs/diagnostics and captureArtifact() for a serializable diagnostic/attribution artifact",
+        "assert with expectDiagnostic / expectNoDiagnostics and recompute or waste budgets with expectRerunBudget / expectNoWaste; dedicated vitest, browser, and playwright entries are available"
+      ],
+      "must_not": [
+        "scrape (?:the )?console"
+      ],
+      "source": "reactivity.md dev diagnostics section"
+    },
+    {
+      "id": "A30",
+      "axis": "api",
+      "title": "RequestEventLocals module augmentation",
+      "routed_reference": "server-functions.md",
+      "prompt": "How should an app type custom `getRequestEvent()!.locals.user` data in Solid 2.0, and what declaration-file shape accidentally replaces package types instead of augmenting them?",
+      "must_include": [
+        "augment interface RequestEventLocals in declare module \"@solidjs/web\"; that shared interface flows to RequestEvent.locals",
+        "the declaration must itself be a module (top-level import or export {}); a global script-style declare module block defines/replaces the ambient module instead of augmenting the package"
+      ],
+      "must_not": [
+        "namespace App",
+        "App\\.RequestEventLocals"
+      ],
+      "source": "server-functions.md RequestEvent and request scoping section"
     },
     {
       "id": "B1",
@@ -411,7 +503,7 @@
         "getBoundingClientRect\\(\\)\\s* (?:inside|in) the ref",
         "createRenderEffect (?:reads|returns) zeros"
       ],
-      "source": "reactivity.md:300-331"
+      "source": "reactivity.md createRenderEffect and lane selection sections"
     },
     {
       "id": "B2",
@@ -426,10 +518,9 @@
       ],
       "must_not": [
         "createEffect (?:runs|fires) after (?:the )?paint",
-        "post-paint",
         "yes,? (?:the user|there) would (?:see|be) a (?:visible )?flash"
       ],
-      "source": "reactivity.md:333-340"
+      "source": "reactivity.md createRenderEffect paint timing section"
     },
     {
       "id": "B3",
@@ -459,8 +550,6 @@
         "setter takes a draft you mutate in place: setStore(s => { s.user.name = 'B'; s.list.push(x); }) — produce is the default, no produce() import"
       ],
       "must_not": [
-        "solid-js/store",
-        "produce\\s*\\(",
         "setStore\\s*\\(\\s*[\"']"
       ],
       "source": "stores.md:1-29"
@@ -480,7 +569,7 @@
         "createAsync\\s*\\(",
         "Solid (?:auto-?|automatically |already )(?:cancels|aborts)"
       ],
-      "source": "async-and-actions.md:41-76"
+      "source": "async-and-actions.md cancellation and cleanup section"
     },
     {
       "id": "B6",
@@ -497,7 +586,7 @@
         "try\\s*/\\s*finally\\s+(?:is\\s+)?(?:enough|sufficient|reliable|fine)\\b",
         "Solid (?:does not|doesn't|never|won't) (?:call|invoke|drive)s?\\b[^.]{0,12}return"
       ],
-      "source": "patterns.md:199-227; async-and-actions.md:90-115"
+      "source": "patterns.md streaming socket section; async-and-actions.md async generator cleanup section"
     },
     {
       "id": "B7",
@@ -506,31 +595,29 @@
       "routed_reference": "async-and-actions.md",
       "prompt": "An action does an optimistic `createOptimisticStore` write, then `yield`s the server call, then `refresh(todos)`. You try to show a `Saving…` spinner with `<Show when={isPending(() => todos())}>` — but it never appears. Why doesn't isPending report the in-flight save, and how do you show the saving state correctly?",
       "must_include": [
-        "as of beta.21 (question-scoped-pending-affects), the optimistic write is verdict-inert: it doesn't read pending on its own slot, and it no longer masks anything else — the beta.17–beta.20 store-wide/per-node 'certainty by decree' mask is removed",
+        "the optimistic write is verdict-inert: it doesn't read pending on its own slot and it does not mask anything else",
         "the real reason isPending stays false is that a bare refresh(todos) is a silent, same-question re-ask: it doesn't change the tracked input (the query key), so it reveals the fresh value without ever flipping isPending to true — this is true whether or not an optimistic write is live",
         "drive the Saving… affordance from co-written data instead: a flag pushed into the optimistic write itself (e.g. { ...todo, pending: true }), or a separate createOptimistic(false) flag read by value — not via isPending; if the reload itself should read as pending, declare it explicitly: affects(todos); refresh(todos)"
       ],
       "must_not": [
-        "\\.loading\\b",
-        "isRefreshing\\s*\\("
+        "\\.loading\\b"
       ],
-      "source": "async-and-actions.md:126-174, 361-386"
+      "source": "async-and-actions.md isPending and optimistic sections"
     },
     {
       "id": "B8",
       "axis": "pattern",
       "title": "onSettled cleanup only in an owned scope",
       "routed_reference": "reactivity.md",
-      "prompt": "Inside an event handler (not the component body) you call `onSettled(() => { const off = subscribe(); return () => off(); })`. Does that returned cleanup run, how did the older behavior differ, and where should setup-with-teardown live instead?",
+      "prompt": "Inside an event handler (not the component body) you call `onSettled(() => { const off = subscribe(); return () => off(); })`. Does that returned cleanup run, and where should setup-with-teardown live instead?",
       "must_include": [
         "a returned cleanup from onSettled is only honored in an OWNED scope (a component body); fired out of band — from an event handler, a tracked effect, or another onSettled — there is no owner to bind to, so returning a cleanup is a dev error (SETTLED_CLEANUP_UNOWNED) and is dropped in production",
-        "before beta.16 that out-of-band cleanup ran IMMEDIATELY, tearing down the setup the instant it was installed",
         "the out-of-band one-shot fire with no cleanup is fine (e.g. onSettled(() => toast('Saved')) after a handler write); for setup-with-teardown, call the helper from the component body instead"
       ],
       "must_not": [
         "onMount\\b"
       ],
-      "source": "reactivity.md:195-217, 354; migration-map.md:30"
+      "source": "reactivity.md onSettled section; migration-map.md lifecycle rename row"
     },
     {
       "id": "B9",
@@ -539,34 +626,35 @@
       "routed_reference": "stores.md",
       "prompt": "A derived store returns an inner store, and `<For each={outer.items}>` renders it. After the inner store is reconciled, direct reads show fresh rows but an older release left `<For>` stale. What is the current contract for `<For>`/`mapArray`, `Object.keys`, `snapshot`, and `deep` through this wrapper? Should you clone the inner store as a workaround?",
       "must_include": [
-        "in beta.17+ (still true in beta.28) structural tracking chains through the outer wrapper to the inner store, so reconcile/add/delete invalidates <For>/mapArray and Object.keys as well as snapshot/deep",
+        "structural tracking chains through the outer wrapper to the inner store, so reconcile/add/delete invalidates <For>/mapArray and Object.keys as well as snapshot/deep",
         "structural consumers and direct property reads now stay consistent; the stale optimistic row bug through a wrapper is fixed",
-        "do NOT clone the inner store as a workaround — update to beta.17 or newer and preserve the fine-grained store view"
+        "do NOT clone the inner store as a workaround; preserve the fine-grained store view"
       ],
       "must_not": [
         "(?:should|must|need to) clone (?:the )?(?:inner )?store",
         "<For> (?:cannot|does not|doesn't) track"
       ],
-      "source": "stores.md:153-175"
+      "source": "stores.md store-in-store views section"
     },
     {
       "id": "B10",
       "axis": "pattern",
       "title": "lazy SSR identity and hydration",
       "routed_reference": "control-flow-and-dom.md",
-      "prompt": "An SSR app creates a lazy component from an `import.meta.glob` entry, so the `lazy()` callsite has no static `moduleUrl`. How does Solid hydrate it, how does the server find the asset identity, and what is `Lazy.moduleUrl` during that SSR request? Contrast that getter with a callsite that does supply `moduleUrl`. What happens if no identity exists at all?",
+      "prompt": "An SSR app creates a lazy component from an `import.meta.glob` entry, so the `lazy()` callsite has no static `moduleUrl`. How does Solid hydrate it, how does the server find the asset identity, and what is `Lazy.moduleUrl` during that SSR request? Contrast that getter with a callsite that does supply `moduleUrl`, and show the supported way to select a named export. What happens if no identity exists at all?",
       "must_include": [
         "the client matches preloaded lazy modules positionally by HYDRATION ID, not module identity, so a callsite without moduleUrl can hydrate",
         "the server waits for the import and uses the module's bundler-injected $$moduleUrl export when the callsite has no moduleUrl",
         "for this glob callsite Lazy.moduleUrl remains undefined even after $$moduleUrl is loaded; $$moduleUrl is used only for deferred asset registration and does not populate the component getter",
         "manifest resolution, modulepreload-on-access, and the raw-specifier fallback apply to Lazy.moduleUrl only when the lazy() callsite supplied moduleUrl",
-        "if neither moduleUrl nor $$moduleUrl exists, SSR still renders and WARNS about a late client load instead of throwing"
+        "if neither moduleUrl nor $$moduleUrl exists, SSR still renders and WARNS about a late client load instead of throwing",
+        "select a named export with lazy(() => import(...), { export: \"Name\" }); the export name is a call-site literal, and moduleUrl is now the third argument"
       ],
       "must_not": [
         "moduleUrl is required (?:on|at) (?:the )?client",
         "throws? (?:an error )?(?:when|if) (?:there is )?no (?:moduleUrl|identity)"
       ],
-      "source": "control-flow-and-dom.md:136-163"
+      "source": "control-flow-and-dom.md lazy SSR and hydration section"
     },
     {
       "id": "B11",
@@ -581,7 +669,7 @@
       "must_not": [
         "writes? (?:right\\s+)?after\\s+(?:an?\\s+)?await\\s+(?:is|are)\\s+(?:transaction-?safe|fine|safe)"
       ],
-      "source": "async-and-actions.md:312-330"
+      "source": "async-and-actions.md action yield and await contract section"
     },
     {
       "id": "B12",
@@ -599,7 +687,7 @@
         "(?:server|SSR) renders? (?:the )?(?:dialog|portal(?:'s)? (?:content|children|markup))",
         "portal(?:'s)? children (?:render|evaluate) (?:on|during) (?:the )?server"
       ],
-      "source": "control-flow-and-dom.md:249-265"
+      "source": "control-flow-and-dom.md Portal section"
     },
     {
       "id": "B13",
@@ -614,7 +702,7 @@
         "if refreshes rebuild row objects, preserve DOM identity at the consumer with <For keyed={row => row.id}>"
       ],
       "must_not": [],
-      "source": "stores.md:88-115"
+      "source": "stores.md shallow stores section"
     },
     {
       "id": "B14",
@@ -627,7 +715,7 @@
         "this deliberately differs from standalone reconcile, which is strict when the caller targets a different root entity"
       ],
       "must_not": [],
-      "source": "stores.md:124-133"
+      "source": "stores.md derived stores section"
     },
     {
       "id": "B15",
@@ -642,7 +730,7 @@
         "markRaw is internal and is not a public solid-js root export; use shallow stores or reference replacement instead"
       ],
       "must_not": [],
-      "source": "stores.md:177-193"
+      "source": "stores.md raw platform objects section"
     },
     {
       "id": "B16",
@@ -657,7 +745,7 @@
         "Solid releases/closes an unobserved AsyncIterable, but deterministic external cleanup still belongs in a synchronous onCleanup before the first await/yield (AbortController, socket close, or iterator unblock/close)"
       ],
       "must_not": [],
-      "source": "async-and-actions.md:41-62; reactivity.md:233-244; patterns.md:176-197"
+      "source": "async-and-actions.md lazy async memo section; reactivity.md memo options section; patterns.md demand-driven resource section"
     },
     {
       "id": "B17",
@@ -670,24 +758,25 @@
         "without a boundary, the root hole still gates the first shell; the server waits and emits the resolved component inline rather than flushing an empty shell"
       ],
       "must_not": [],
-      "source": "control-flow-and-dom.md:128-134"
+      "source": "control-flow-and-dom.md SSR pending dynamic lazy section"
     },
     {
       "id": "B18",
       "axis": "pattern",
       "title": "experimental server component setup and ownership",
       "routed_reference": "server-components.md",
-      "prompt": "Show the current shape for a server component with a client-owned slot: how is it declared and consumed, what must run before hydrate/render, which Vite flag enables it, what state survives refetch, and what DOM seam must CSS account for?",
+      "prompt": "Show the current shape for a server component with a client-owned slot: how is it declared and consumed, what must run before hydrate/render, which Vite flag enables it, what state survives refetch, what happens to app Context at the server-component root, and what DOM seam must CSS account for?",
       "must_include": [
         "a server component is a component function returned by a server function; the client consumes its promise with dynamic(() => serverFn(...)) and passes client-owned positions as Slot props",
         "call installServerComponents() explicitly before hydrate() or render(); a bare import is insufficient because the package is side-effect-free",
-        "enable vite-plugin-solid >= 3.0.0-next.16 with serverFunctions: { components: true }",
+        "enable @solidjs/vite-plugin with serverFunctions: { components: true }",
         "the plugin wires endpoint frame responses; turnkey SSR also wires document rendering/adoption, while authored entries must install the frame render/bootstrap/client pieces themselves",
         "server-owned HTML morphs in place while client-owned slot DOM identity and state survive updates; optional $key gives slot occurrence identity across reordering",
-        "the current boundary is a real dx-frame data-fid custom element, not an invisible marker range, so its inline-by-default CSS/layout seam must be handled"
+        "the current boundary is a real dx-frame data-fid custom element, not an invisible marker range, so its inline-by-default CSS/layout seam must be handled",
+        "app Context does not cross a server-component root: default-less useContext throws, defaulted context reads its default, and providers created inside the server component work normally"
       ],
       "must_not": [],
-      "source": "server-components.md:11-66, 75-85"
+      "source": "server-components.md declaration setup stream and footguns sections"
     },
     {
       "id": "C1",
@@ -703,7 +792,7 @@
         "function\\s+\\w+\\s*\\(\\s*\\{\\s*title",
         "const\\s*\\{\\s*title\\s*\\}\\s*=\\s*props"
       ],
-      "source": "reactivity.md:128-141; SKILL.md rule 4"
+      "source": "reactivity.md strict top-level reads section; SKILL.md rule 4"
     },
     {
       "id": "C2",
@@ -737,7 +826,7 @@
         "<Counter\\s+value=\\{count\\}\\s",
         "function\\s+Counter\\s*\\(\\s*\\{"
       ],
-      "source": "reactivity.md:151-193; SKILL.md rule 5; reviewer SKILL.md"
+      "source": "reactivity.md passing reactive values to children section; SKILL.md rule 5; reviewer SKILL.md"
     },
     {
       "id": "C4",
@@ -751,8 +840,6 @@
         "the dependency array [n] disappears — the compute phase tracks deps automatically"
       ],
       "must_not": [
-        "useState",
-        "useEffect",
         ",\\s*\\[\\s*n\\s*\\]\\s*\\)"
       ],
       "source": "migration-map.md:51-60; SKILL.md rule 2"
@@ -785,7 +872,6 @@
         "flush() is only needed if you must synchronously read your own writes right after"
       ],
       "must_not": [
-        "batch\\s*\\(",
         "import.*batch"
       ],
       "source": "reactivity.md:18; migration-map.md:41-49"
@@ -801,28 +887,26 @@
         "onSettled is a leaf owner: you cannot create reactive primitives or call onCleanup inside it — return a cleanup function instead"
       ],
       "must_not": [
-        "onMount",
         "onCleanup\\s*\\("
       ],
-      "source": "reactivity.md:195-223; migration-map.md:30"
+      "source": "reactivity.md onSettled section; migration-map.md lifecycle rename row"
     },
     {
       "id": "D3",
       "axis": "v1",
       "title": "imports moved",
-      "routed_reference": "control-flow-and-dom.md",
-      "prompt": "In Solid 2.0, where do `render`, `Portal`, and `createStore` come from? And what replaced `classList`?",
+      "routed_reference": "typescript-setup.md",
+      "prompt": "In Solid 2.0, where do `render`, `Portal`, and `createStore` come from, what replaced `classList`, and what compiler packages replaced `babel-preset-solid`?",
       "must_include": [
         "render and Portal import from '@solidjs/web' (NOT solid-js/web)",
         "createStore (and other store APIs) import from 'solid-js' (NOT solid-js/store)",
-        "classList is gone — use the object/array form of the class prop: class={{ active: isActive() }}"
+        "classList is gone — use the object/array form of the class prop: class={{ active: isActive() }}",
+        "babel-preset-solid is gone: use @solidjs/babel-plugin in Babel pipelines, or @solidjs/vite-plugin in Vite (which uses the native @solidjs/compiler by default)"
       ],
       "must_not": [
-        "solid-js/web",
-        "solid-js/store",
         "classList="
       ],
-      "source": "migration-map.md:11-18, 34; control-flow-and-dom.md:167-180"
+      "source": "migration-map.md import paths; typescript-setup.md import paths and compiler paragraph; control-flow-and-dom.md class section"
     },
     {
       "id": "D4",
@@ -838,7 +922,7 @@
         "createSelector\\s*\\(",
         "use createSelector"
       ],
-      "source": "stores.md:117-151; migration-map.md:35"
+      "source": "stores.md derived stores section; migration-map.md createSelector row"
     },
     {
       "id": "D5",
@@ -854,7 +938,7 @@
         "refresh\\s*\\(\\s*\\w+\\s*\\)\\s*(?:alone\\s*)?(?:flips|sets|makes)\\s*isPending\\s*(?:to\\s*)?true",
         "isPending\\s*(?:\\([^)]*\\))?\\s*(?:becomes|is)\\s*true\\s*(?:on|during|for)\\s*(?:a\\s*)?(?:bare\\s*)?refresh"
       ],
-      "source": "async-and-actions.md:152-174, 213-234; migration-map.md:112"
+      "source": "async-and-actions.md isPending and affects sections; migration-map.md resource loading row"
     }
   ]
 }

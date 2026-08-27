@@ -1,7 +1,7 @@
 # Control flow and DOM
 
-Verified against solid-js@2.0.0-beta.28 / @solidjs/web@2.0.0-beta.28 typings,
-`next@90fcbd0a` sources and `packages/solid-web/test/flow.type-tests.tsx`.
+Verified against solid-js@2.0.0-rc.3 / @solidjs/web@2.0.0-rc.3 typings and
+`next@af6fee86` sources/tests.
 Control-flow components live in `solid-js`; `render`/`hydrate`/`Portal`/
 `Dynamic`/`dynamic` live in `@solidjs/web`.
 
@@ -92,8 +92,8 @@ Coordinates sibling `Loading` boundaries.
   it, then it runs its own order locally. A `natural` parent does **not**
   hold nested composites: they activate immediately and run their own order
   from the start.
-- SSR: `order="together"` and `collapsed` need streaming
-  (`renderToStream`/`renderToStringAsync`); plain `renderToString` supports
+- SSR: `order="together"` and `collapsed` need `renderToStream`; plain
+  `renderToString` supports
   `sequential` (uncollapsed) and `natural`.
 
 ```jsx
@@ -135,16 +135,19 @@ emits the resolved component inline rather than sending an empty shell first.
 
 ### `lazy()` in SSR and hydration
 
-`lazy(loader, moduleUrl?)` lives in `solid-js`. The optional callsite module
-specifier is normally injected by the bundler and is exposed as
+`lazy(loader, options?, moduleUrl?)` lives in `solid-js`. `options.export`
+selects a named module export; it must be a call-site literal so hydration can
+resolve the same component synchronously. The optional callsite module
+specifier (third argument) is normally injected by the bundler and is exposed as
 `Lazy.moduleUrl` for island and asset tooling.
 
 ```tsx
 const About = lazy(() => import("./About"));
+const Settings = lazy(() => import("./pages"), { export: "Settings" });
 const moduleRef: string | undefined = About.moduleUrl;
 ```
 
-Since beta.17, hydration matches preloaded lazy modules **positionally by
+Hydration matches preloaded lazy modules **positionally by
 hydration id**, not by module identity, so a client callsite without
 `moduleUrl` (including `import.meta.glob`) hydrates correctly. On the server:
 
@@ -240,11 +243,16 @@ server export is a no-op.
 ## Rendering entries
 
 ```ts
-import { render, hydrate, Portal } from "@solidjs/web";                       // client
-import { renderToString, renderToStringAsync, renderToStream, isServer, isDev } from "@solidjs/web"; // server
+import { render, hydrate, Portal } from "@solidjs/web";              // client
+import { renderToString, renderToStream, isServer, isDev } from "@solidjs/web"; // server
 ```
 
 `render` returns a dispose function.
+
+`renderToString()` is synchronous. For a fully settled async HTML string,
+`await renderToStream(code, options)`; the returned stream is `PromiseLike<string>`.
+`renderToStringAsync` does not exist. Consume a stream exactly once through
+`await`, `.pipe()`, `.pipeTo()`, or `.readable`; mixing distinct consumers throws.
 
 ### `Portal` — client-only island
 

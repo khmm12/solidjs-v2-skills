@@ -1,6 +1,6 @@
 # Patterns: composing Solid 2.0 primitives
 
-Verified against solid-js@2.0.0-beta.28 (published typings) and `next@90fcbd0a` sources/tests.
+Verified against solid-js@2.0.0-rc.3 (published typings) and `next@af6fee86` sources/tests.
 
 Field-tested compositions on top of the core APIs. Each pattern names the
 primitives it leans on; signatures are covered in the sibling reference files.
@@ -16,7 +16,7 @@ value, carrying rich state (source, refresh status) alongside the data.
 import { createMemo, isPending, onCleanup, refresh } from "solid-js";
 
 type QueryState<K, T> = {
-  key: K;                                 // carried so a refresh re-run is detectable without isRefreshing
+  key: K;                                 // carried so a refresh re-run is detectable
   source: "cache" | "network";
   value: T;
   refresh: { status: "ok" } | { status: "refreshing" } | { status: "failed"; error: unknown };
@@ -45,8 +45,7 @@ function createCachedQuery<K, T>(options: {
     () => {
       // isPending(state) covers the initial/key-changed run (a genuinely new
       // question pends monotonically until reveal). It does NOT cover the
-      // refresh() path below — beta.21 made a bare same-question refresh() a
-      // silent re-ask (question-scoped-pending-affects), so refresh.status is
+      // refresh() path below is a silent same-question re-ask, so refresh.status is
       // the sole signal for "revalidating" once the key hasn't changed.
       try { return isPending(state) || state().refresh.status === "refreshing"; }
       catch { return false; }             // tolerate not-ready on first read
@@ -72,8 +71,8 @@ async function* streamQuery({ key, previous, signal, fetcher, cache }) {
     return value;
   });
   if (previous) {                          // refresh path: keep showing prev, swap when network lands
-    // Yield "refreshing" up front: since beta.21 a same-question refresh() no
-    // longer flips isPending() on its own (see `pending` above), so this
+    // Yield "refreshing" up front: a same-question refresh() does not flip
+    // isPending() on its own (see `pending` above), so this
     // explicit status is what "revalidating" actually reads off.
     yield { ...previous, key, refresh: { status: "refreshing" } };
     try { yield { key, source: "network", value: await network, refresh: { status: "ok" } }; }
@@ -98,9 +97,8 @@ The techniques, individually reusable:
   keys, but a composite key (`() => ({ userId, page })`) is a fresh object each
   run, so every `refresh()` would misread as a fresh run and skip the SWR path.
   Pass an `equals` (structural, or compare a serialized key) for composite keys.
-  ⚠ This replaces `isRefreshing()`, which was **removed in beta.15** (no public
-  replacement; upstream guidance: model refresh intent with actions/optimistic
-  state, observe readiness via `<Loading>`/`isPending`).
+  This is the explicit way to model refresh intent; `isPending` reports data
+  readiness, not the fact that `refresh()` was called.
 - **`onCleanup` + `AbortController` in compute** — superseded runs cancel their
   fetch. This is the legitimate computation-scoped use of `onCleanup` (register it
   before the first `await`/`yield`; see `async-and-actions.md` →
@@ -130,20 +128,19 @@ const addTodo = action(function* (todo) {
 // has installed the real data, keyed reconciliation preserves row identity.
 ```
 
-UI flags, as of beta.21's question-scoped pending model (`async-and-actions.md`
+UI flags under the question-scoped pending model (`async-and-actions.md`
 → *`isPending` — question-scoped pending*, *Optimistic writes are
 verdict-inert*): a bare `refresh(todos)` is a **quiet, same-question re-ask**
 — it never flips `isPending` regardless of whether an optimistic write is
 live. The optimistic write itself is verdict-inert too: it decrees nothing
-and masks nothing (the beta.17–beta.20 store-wide mask is gone). So don't
+and masks nothing. So don't
 drive *this* mutation's "Saving…" spinner off `isPending(() => todos.length)`
 either way — co-write a flag into the row (`{ ...todo, pending: true }`) or
 use a separate `createOptimistic(false)`. If the reconcile *should* read as
 pending (e.g. you want a subtle "updating…" indicator while it settles),
 declare it: `affects(todos); refresh(todos)` (`async-and-actions.md` →
 *`affects(target, key?)`).
-Never repurpose `refresh()` itself as a flag (`isRefreshing` was removed in
-beta.15).
+Never repurpose `refresh()` itself as a process flag.
 
 ## Selection projection (don't notify every row)
 
@@ -191,7 +188,7 @@ const price = createMemo(
 ```
 
 Do **not** change this to a pending Promise and expect the same immediate
-teardown. In beta.28 an in-flight lazy async computation survives a temporary
+teardown. An in-flight lazy async computation survives a temporary
 zero-subscriber gap, and a later subscriber rejoins it. Keep deterministic
 async cancellation in synchronous `onCleanup`; to stream messages, use an
 async generator — next.
@@ -311,32 +308,3 @@ function handleSubmit() {
 
 Scope it tightly (handlers, tests); sprinkling `flush()` to "fix" stale reads
 usually means a read belongs in JSX or an effect instead.
-
-## Known beta gotchas (observed at 2.0.0-beta.28)
-
-- **`isPending`/optimistic semantics changed underneath beta.17-era code
-  (landed in beta.21, changeset `question-scoped-pending-affects`).** If you
-  built against beta.17–beta.20: the store-wide/per-node "optimistic write
-  masks `isPending`" behavior is **gone**, and a bare `refresh()` — which
-  previously *did* read as pending — is now a silent same-question re-ask.
-  Code that relied on either doesn't error, it just silently shows different
-  UI (a spinner that used to hide now shows, or one that used to show now
-  doesn't). Re-check any hand-rolled "Saving…"/"revalidating…" indicator
-  built before beta.21; see `async-and-actions.md` → *`isPending` —
-  question-scoped pending* and *`affects(target, key?)`*.
-- `Portal` from `@solidjs/web` was **rewritten in beta.15** (owner-parented
-  insert via the new `host` option, no mount `Proxy`) — this resolves the
-  beta.14 mount crash plus content accumulation on keyed swaps (#2757) and
-  ownerless-effect (`NO_OWNER_EFFECT`) leaks (#2758). If you're pinned below
-  beta.15 and a portal misbehaves, an imperative `document.body.appendChild`
-  fallback works meanwhile.
-- The published `solid-js` typings are the most reliable API surface — the
-  betas churn the public API freely: `isRefreshing` was a public `solid-js`
-  export from beta.0 through beta.14 (and written up in the RFC docs), then
-  **removed in beta.15** — commit `52255dc` cut the code, typings, and docs
-  together (as of beta.21 it is gone from `@solidjs/signals` internals too).
-  When docs and `node_modules` disagree, trust `node_modules`; before building
-  on a beta-only API, check the repo's `.changeset/` directory for its
-  scheduled fate.
-- `refresh()` no longer cascades into upstream memos (landed in beta.15): only
-  the explicit target / top-level reads of the refresh callback recompute.

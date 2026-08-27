@@ -1,4 +1,4 @@
-<!-- Verbatim copy of packages/solid/CHEATSHEET.md from github.com/solidjs/solid@next (commit 90fcbd0a, solid-js@2.0.0-beta.28). Do not edit; refresh from upstream when the beta advances. -->
+<!-- Verbatim copy of packages/solid/CHEATSHEET.md from github.com/solidjs/solid@next (commit af6fee86, solid-js@2.0.0-rc.3). Do not edit; refresh from upstream when the prerelease advances. -->
 
 # Solid 2.0 — Cheatsheet
 
@@ -495,10 +495,10 @@ return <li class={cls} />;
 ## SSR (server entry)
 
 ```ts
-import { renderToString, renderToStringAsync, renderToStream, isServer, isDev } from "@solidjs/web";
+import { renderToString, renderToStream, isServer, isDev } from "@solidjs/web";
 ```
 
-`Portal` throws on the server. `Reveal` `order="together"` and `collapsed` require streaming (`renderToStream` / `renderToStringAsync`).
+`Portal` throws on the server. `Reveal` `order="together"` and `collapsed` require streaming (`renderToStream` — awaiting it yields the fully settled HTML string).
 
 ---
 
@@ -663,5 +663,5 @@ If your training data is 1.x, these are the corrections. **Read this before gene
 
 ## See also
 
-- [`MIGRATION.md`](https://github.com/solidjs/solid/blob/main/documentation/solid-2.0/MIGRATION.md) — full beta-tester migration guide.
+- [`MIGRATION.md`](https://github.com/solidjs/solid/blob/main/documentation/solid-2.0/MIGRATION.md) — full migration guide.
 - [Solid 2.0 RFCs](https://github.com/solidjs/solid/tree/main/documentation/solid-2.0) — deep-dive design docs by subsystem.

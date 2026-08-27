@@ -8,6 +8,8 @@
 //   node evals/run.mjs --quick         # smoke: 4 Q, base+deployed, haiku only, N=1
 //   node evals/run.mjs --conditions base,content,deployed --n 3 --models sonnet,haiku
 //   node evals/run.mjs --provider codex --models gpt-5.6-luna --quick
+//   node evals/run.mjs --provider codex --models gpt-5.6-luna --reasoning low \
+//     --grader-provider codex --grader gpt-5.6-terra --grader-reasoning medium
 //   node evals/run.mjs --questions A1,B2,C4   # subset by id (or --questions axis:react)
 //   node evals/run.mjs --grader sonnet --concurrency 4
 //
@@ -42,8 +44,8 @@ const EVAL_RUN_ROOT = join(tmpdir(), `solidjs-v2-skills-eval-${process.pid}`);
 const ISOLATED_CODEX_HOME = join(EVAL_RUN_ROOT, 'codex-home');
 // Neutral working dir for every answer call. Critical: `base`/`content` must NOT
 // run inside the repo, or the model auto-loads the repo CLAUDE.md / skill content
-// off disk and the control is contaminated (observed: haiku reproducing beta.15-only
-// reference text verbatim at 1 turn, vs floundering from a real neutral cwd). MUST
+// off disk and the control is contaminated (observed: haiku reproducing
+// repository-only reference text verbatim, vs floundering from a real neutral cwd). MUST
 // live OUTSIDE the repo tree — hence os.tmpdir(), NOT a path under RESULTS_DIR (which
 // is inside the repo). `deployed` reads the skill through an absolute path, so a
 // neutral cwd is correct for it too. NB: the user-level ~/.claude/CLAUDE.md still loads
@@ -88,9 +90,17 @@ const defaultModels = PROVIDER === 'codex' ? 'default' : quick ? 'haiku' : 'sonn
 let MODELS = flag('models', defaultModels).split(',');
 let CONDITIONS = flag('conditions', 'base,deployed').split(',');
 const N = parseInt(flag('n', '1'), 10);
+const REASONING = flag('reasoning', null);
+const GRADER_PROVIDER = flag('grader-provider', 'claude');
 const GRADER = flag('grader', 'sonnet');
+const GRADER_REASONING = flag('grader-reasoning', null);
 const CONCURRENCY = parseInt(flag('concurrency', '4'), 10);
 const NOGRADE = has('no-grade'); // delivery-only run: record answers + trigger, skip grading
+
+if (!['claude', 'codex'].includes(GRADER_PROVIDER)) {
+  console.error(`Unknown --grader-provider ${GRADER_PROVIDER}; expected claude or codex`);
+  process.exit(2);
+}
 
 let questions = bank.questions;
 const qsel = flag('questions', quick ? 'A1,A4,B2,D1' : null);
@@ -127,8 +137,9 @@ function claude(extraArgs, { timeoutMs = 180000 } = {}) {
   });
 }
 
-function codex(prompt, model, { timeoutMs = 180000 } = {}) {
+function codex(prompt, model, { timeoutMs = 180000, reasoning = null } = {}) {
   const modelArgs = model === 'default' ? [] : ['--model', model];
+  const reasoningArgs = reasoning ? ['--config', `model_reasoning_effort=${reasoning}`] : [];
   const cliArgs = [
     'exec',
     '--ignore-user-config',
@@ -138,6 +149,7 @@ function codex(prompt, model, { timeoutMs = 180000 } = {}) {
     '--skip-git-repo-check',
     '--cd', NEUTRAL_CWD,
     ...modelArgs,
+    ...reasoningArgs,
     '--json',
     prompt,
   ];
@@ -165,10 +177,10 @@ function codex(prompt, model, { timeoutMs = 180000 } = {}) {
         const messages = events
           .filter((e) => e.type === 'item.completed' && e.item?.type === 'agent_message')
           .map((e) => e.item.text);
-        // Treat every observed item except pure model output/reasoning as tool
-        // activity. This includes command/MCP calls, web searches, file changes,
-        // browser/computer use, and future item types unknown to this runner.
-        const passiveItemTypes = new Set(['agent_message', 'reasoning']);
+        // Treat every observed item except model output/reasoning and CLI error
+        // notices as tool activity. This includes command/MCP calls, web searches,
+        // file changes, browser/computer use, and future item types unknown here.
+        const passiveItemTypes = new Set(['agent_message', 'reasoning', 'error']);
         const toolItemsById = new Map();
         for (const event of events) {
           if (!['item.started', 'item.completed'].includes(event.type)) continue;
@@ -267,7 +279,7 @@ function codexPrompt(q, condition) {
 
 function runAnswer(q, model, condition) {
   if (PROVIDER === 'claude') return claude(answerArgs(q, model, condition));
-  return codex(codexPrompt(q, condition), model);
+  return codex(codexPrompt(q, condition), model, { reasoning: REASONING });
 }
 
 function answerArgs(q, model, condition) {
@@ -325,14 +337,23 @@ async function grade(q, answer) {
     `FORBIDDEN (must not be recommended/used in the answer's own solution; ` +
     `contrasting against them is fine):\n${forbidden}\n\n` +
     `ANSWER TO GRADE:\n"""\n${answer}\n"""`;
-  const r = await claude([
-    '-p', user,
-    '--model', GRADER,
-    '--append-system-prompt', GRADER_SYSTEM,
-    '--output-format', 'json',
-  ]);
+  const r = GRADER_PROVIDER === 'claude'
+    ? await claude([
+        '-p', user,
+        '--model', GRADER,
+        '--append-system-prompt', GRADER_SYSTEM,
+        '--output-format', 'json',
+      ])
+    : await codex(
+        'Answer without using tools, shell commands, web search, or external files.\n\n' +
+          GRADER_SYSTEM + '\n\n' + user,
+        GRADER,
+        { reasoning: GRADER_REASONING },
+      );
   const flags = regexFlags(answer, q.must_not);
   if (!r.ok) return { pass: false, by: 'grader-error', reason: r.error, checks: [], flags };
+  if (GRADER_PROVIDER === 'codex' && r.toolCalls)
+    return { pass: false, by: 'grader-contaminated', reason: `grader used ${r.toolCalls} tool item(s)`, checks: [], flags };
   let parsed;
   try {
     const txt = String(r.result).replace(/^```(?:json)?/m, '').replace(/```\s*$/m, '').trim();
@@ -368,7 +389,7 @@ async function pool(items, worker, size) {
 // ---- run --------------------------------------------------------------------
 if (!existsSync(RESULTS_DIR)) mkdirSync(RESULTS_DIR, { recursive: true });
 if (!existsSync(NEUTRAL_CWD)) mkdirSync(NEUTRAL_CWD, { recursive: true });
-if (PROVIDER === 'codex') prepareIsolatedCodexHome();
+if (PROVIDER === 'codex' || (!NOGRADE && GRADER_PROVIDER === 'codex')) prepareIsolatedCodexHome();
 
 const cells = [];
 for (const q of questions)
@@ -378,7 +399,9 @@ for (const q of questions)
 
 console.error(
   `Running ${cells.length} cells: ${questions.length}Q × ${MODELS.length}m × ${CONDITIONS.length}cond × N${N} ` +
-  `(provider=${PROVIDER}, grader=${NOGRADE ? 'OFF (delivery-only)' : `claude/${GRADER}`}, concurrency=${CONCURRENCY})`,
+  `(provider=${PROVIDER}, reasoning=${REASONING || 'default'}, ` +
+  `grader=${NOGRADE ? 'OFF (delivery-only)' : `${GRADER_PROVIDER}/${GRADER}/${GRADER_REASONING || 'default'}`}, ` +
+  `concurrency=${CONCURRENCY})`,
 );
 
 let done = 0;
@@ -447,8 +470,13 @@ writeFileSync(
         MODELS,
         CONDITIONS,
         N,
+        REASONING,
+        GRADER_PROVIDER,
         GRADER,
-        CODEX_HOME_MODE: PROVIDER === 'codex' ? 'isolated-auth-only' : null,
+        GRADER_REASONING,
+        CODEX_HOME_MODE: PROVIDER === 'codex' || (!NOGRADE && GRADER_PROVIDER === 'codex')
+          ? 'isolated-auth-only'
+          : null,
       },
       records,
     },
@@ -480,7 +508,7 @@ const pct = (s) => s.total
 const contaminatedRecords = records.filter((r) => r.contaminated);
 
 let md = `# Skill exam — ${stamp}\n\n`;
-md += `Config: provider=${PROVIDER}, models=${MODELS.join(',')}, conditions=${CONDITIONS.join(',')}, N=${N}, grader=${NOGRADE ? 'off' : `claude/${GRADER}`}\n\n`;
+md += `Config: provider=${PROVIDER}, models=${MODELS.join(',')}, reasoning=${REASONING || 'default'}, conditions=${CONDITIONS.join(',')}, N=${N}, grader=${NOGRADE ? 'off' : `${GRADER_PROVIDER}/${GRADER}/${GRADER_REASONING || 'default'}`}\n\n`;
 if (contaminatedRecords.length) {
   md += `## Invalid control cells — excluded from pass rates\n\n`;
   md += `Codex used tools in a tool-free control condition. The run exits non-zero so this contamination cannot pass silently.\n\n`;

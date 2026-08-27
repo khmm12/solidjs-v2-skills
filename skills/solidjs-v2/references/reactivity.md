@@ -1,6 +1,6 @@
 # Reactivity: batching, effects, ownership
 
-Verified against solid-js@2.0.0-beta.28 (published typings) and `next@90fcbd0a` sources/tests.
+Verified against solid-js@2.0.0-rc.3 (published typings) and `next@af6fee86` sources/tests.
 
 ## Microtask batching — reads lag writes
 
@@ -66,7 +66,7 @@ error is legal there (it does *not* trip `REACTIVE_WRITE_IN_OWNED_SCOPE`). It
 receives the **original thrown error**, not an internal wrapper, so
 `instanceof` / class branching works. This includes nullish/falsy rejections:
 `Promise.reject(undefined)` reaches it as `undefined`, not as an internal
-`StatusError` (fixed in beta.17). A `throw` from the handler escalates to the
+`StatusError`. A `throw` from the handler escalates to the
 nearest error boundary, or halts the system if there is none (see below).
 
 - The handler catches **compute-phase** errors only (a throw in the compute
@@ -98,18 +98,19 @@ render under a specific `<Loading>` + element + `<Show>` nesting could vanish
 entirely with no console trace).
 
 ```ts
-import { resetErrorHalt } from "@solidjs/signals";  // NOT re-exported from solid-js
+import { resetErrorHalt } from "solid-js";
 ```
 
-`resetErrorHalt()` revives scheduling, but it exists for **tests and dev
-tooling** only — it is not an app-level recovery hook. Don't reach for it to
-"un-crash" production; use a boundary.
+`resetErrorHalt()` revives scheduling for tests, HMR, and playground-style dev
+tooling. It is a no-op in the server build and not an app-level production
+recovery hook. The browser `render()` and refresh runtime reset a prior halt in
+dev so a fresh mount/hot update can recover; production remains a hard crash.
 
 ## No writes or action calls in owned scope
 
 Writing a signal/store inside a reactive scope (memo, effect compute, component
 body) **throws in dev** (`REACTIVE_WRITE_IN_OWNED_SCOPE`). So does calling
-`refresh()` there. As of beta.17, **invoking** an `action()` there also throws
+`refresh()` there. **Invoking** an `action()` there also throws
 synchronously in dev (`ACTION_CALLED_IN_OWNED_SCOPE`): the eventual post-await
 write otherwise escapes the write guard and can livelock a scope that tracks
 the same state. Defining the action there is fine; call it from event handlers,
@@ -124,6 +125,15 @@ const doubled = createMemo(() => count() * 2); // ✅ derive, don't write back
 Escape hatch for genuinely internal state (not app state):
 `createSignal(null, { ownedWrite: true })`. Using `ownedWrite` to silence the
 error for application state is a misuse — derive instead.
+
+### Server rendering is setter-free
+
+Setter writes during SSR emit `[SERVER_WRITE]` once per process/category and
+are deprecated ahead of becoming errors. Signal and store writes currently
+change inert data for later reads/serialization but never re-render; optimistic
+writes are complete no-ops and their setter callback does not run. Model server
+data changes as async computation sources. For a subscription, return its
+`AsyncIterable` instead of pushing values through a setter callback.
 
 ## Strict top-level reads
 
@@ -145,8 +155,7 @@ untracked before its first resolution behaves like an async memo, not like a
 plain store: the seed is a draft for the derive function only, never an
 observable value, so any outside read throws `NotReadyError` — in a dev
 strict-read scope (component body) this is the more descriptive
-`PENDING_ASYNC_UNTRACKED_READ`. Before beta.21 the store proxy's untracked
-path silently returned the seed instead.
+`PENDING_ASYNC_UNTRACKED_READ`.
 
 ## Passing reactive values to children — props are getters
 
@@ -210,9 +219,8 @@ onSettled(() => {
   where it runs on owner disposal. When `onSettled` fires **out of band** — from
   an event handler, a tracked effect, or another `onSettled` — there is no owner
   lifecycle to bind to, so returning a cleanup is a dev error
-  (`SETTLED_CLEANUP_UNOWNED`) and is dropped in production. (Before beta.16 that
-  cleanup ran *immediately*, tearing down setup helpers the instant they
-  installed.) The out-of-band one-shot fire itself (no cleanup) is fine — use it
+  (`SETTLED_CLEANUP_UNOWNED`) and is dropped in production. The out-of-band
+  one-shot fire itself (no cleanup) is fine — use it
   for `onSettled(() => toast("Saved"))` after a handler write; for
   setup-with-teardown, call the helper from the component body instead.
 - Reactive reads are allowed inside.
@@ -233,7 +241,7 @@ const expensive = createMemo(() => heavy(source()), { lazy: true });
 - `lazy: true` defers the first computation until first read, and opts a
   synchronous/settled memo into **autodisposal**: when it loses its last
   subscriber it is torn down and recomputed from scratch on next read. A
-  pending async memo is the exception in beta.28: temporary loss of its final
+  pending async memo is the exception: temporary loss of its final
   subscriber preserves the in-flight computation, and a new subscriber rejoins
   it. If it settles while still unobserved, normal teardown resumes. Default
   (non-lazy) owned memos live for their owner's lifetime; unowned memos normally
@@ -242,6 +250,8 @@ const expensive = createMemo(() => heavy(source()), { lazy: true });
   node loses all subscribers — for tearing down external resources (sockets,
   subscriptions) that should only exist while observed. Combine with `lazy` for
   demand-driven computations.
+- `loadingValue` gives an async memo a committed first value instead of
+  suspending; see `async-and-actions.md` for its pending and SSR semantics.
 - Other options: `equals: false | (prev, next) => boolean` (signals and memos),
   `name` (debugging).
 
@@ -260,7 +270,7 @@ track(() => source());
 ```
 
 Calling `track()` again **before** the current arm fires replaces the previous
-arm (restored in beta.17); it does not accumulate subscriptions. After
+arm; it does not accumulate subscriptions. After
 `track(() => a()); track(() => b())`, a change to `a` does nothing and the next
 change to `b` fires once. The callback may return a cleanup function; it runs
 before the next callback invocation or when the owning scope disposes.
@@ -356,7 +366,12 @@ Every dev-mode diagnostic has a code. The ones you'll hit, with the fix:
 | `MISSING_EFFECT_FN` | error | Pass the apply function: `createEffect(compute, apply)` — the single-argument form is invalid |
 | `NO_OWNER_EFFECT` / `NO_OWNER_CLEANUP` / `NO_OWNER_BOUNDARY` | warn | Create inside a component or `createRoot` |
 | `RUN_WITH_DISPOSED_OWNER` | warn | Don't reuse disposed owners |
-| `REACTIVITY_HALTED` | log | An uncaught error halted reactivity; further writes/flushes are ignored. The causing error is always logged/rethrown alongside it, even when a boundary absorbed the unwind. Wrap fallible code in an error boundary; `resetErrorHalt()` (`@solidjs/signals`) is tests/dev-only |
+| `REACTIVITY_HALTED` | log | An uncaught error halted reactivity; further writes/flushes are ignored. The causing error is always logged/rethrown alongside it. Wrap fallible code in an error boundary; `resetErrorHalt()` from `solid-js` is for tests/dev tooling |
 
 Programmatic access (tooling/tests): `DEV.diagnostics.subscribe(listener)` and
 `DEV.diagnostics.capture()` (returns `{ events, clear(), stop() }`).
+
+For repeatable diagnostic assertions and recompute budgets, use the published
+`@solidjs/diagnostics` harness (`captureArtifact`, `expectDiagnostic`,
+`expectNoDiagnostics`, `expectRerunBudget`, `expectNoWaste`) or its `/vitest`,
+`/browser`, and `/playwright` entries instead of scraping console text.

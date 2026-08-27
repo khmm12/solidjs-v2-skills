@@ -1,6 +1,6 @@
 # Stores: drafts, projections, helpers
 
-Verified against solid-js@2.0.0-beta.28 (published typings) and `next@90fcbd0a` sources/tests.
+Verified against solid-js@2.0.0-rc.3 (published typings) and `next@af6fee86` sources/tests.
 All store APIs are exported from `solid-js` (the `solid-js/store` subpath is gone).
 
 ## Draft-first setters (produce is the default)
@@ -169,10 +169,10 @@ const [view] = createOptimisticStore<{ items: readonly Item[] }>(
 <For each={view.items}>{item => <Row item={item} />}</For>
 ```
 
-Before beta.17, a structural consumer could stay stale through this wrapper
-(for example, an optimistic row survived in `<For>` after refreshed data had
-already reached direct property reads). Do not work around it by cloning the
-inner store; update to beta.17 or newer.
+Structural tracking chains through the outer wrapper to the inner store:
+reconcile/add/delete invalidates `<For>`/`mapArray`, `Object.keys`, `snapshot`,
+and `deep`. Do not clone the inner store as a workaround; that discards its
+fine-grained identity.
 
 ## Raw platform objects and class instances
 

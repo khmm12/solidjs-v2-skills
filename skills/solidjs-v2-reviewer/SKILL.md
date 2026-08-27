@@ -57,18 +57,19 @@ Run these over the changed files; each hit needs a fix or a justification.
 | `createEffect(fn, 0)` / `createMemo(fn, 0)` initial values | 🔴 wrong arg | options object; `prev` default parameter |
 | Setter then immediate read of same signal/DOM | 🔴 stale read | `flush()` or restructure |
 | Signal/store write inside memo/compute/component body | 🔴 throws in dev | derive, or move write to handler/action |
-| `actionFn()` invoked inside memo/compute/component body | 🔴 dev error (`ACTION_CALLED_IN_OWNED_SCOPE`, beta.17); may livelock in prod | invoke from handler/effect callback/`onSettled` |
+| `actionFn()` invoked inside memo/compute/component body | 🔴 dev error (`ACTION_CALLED_IN_OWNED_SCOPE`); may livelock in prod | invoke from handler/effect callback/`onSettled` |
 | `ownedWrite: true` on app state | 🟡 escape-hatch abuse | derive instead; ownedWrite is for internal flags |
 | Top-level `const x = props.x` / store read in component body | 🟡 warns, stale | read in JSX/memo; `untrack` if deliberate |
 | `onCleanup` inside `onSettled`/`createTrackedEffect` | 🔴 throws | return cleanup |
-| Cleanup returned from `onSettled` fired out of band (event handler/tracked effect/nested `onSettled`) | 🔴 dev error (beta.16), dropped in prod | call the setup helper from the component body (owned scope) |
+| Cleanup returned from `onSettled` fired out of band (event handler/tracked effect/nested `onSettled`) | 🔴 dev error, dropped in prod | call the setup helper from the component body (owned scope) |
 | Primitives created inside `onSettled`/tracked effect | 🔴 throws | create in component body |
 | Store proxy passed compute→apply, read in apply | 🟡 warns, won't re-run | extract plain values / `deep(store)` in compute |
 | Async read with no `<Loading>` ancestor | 🟡 root mount deferred | add boundary where fallback UI is wanted |
 | `async function*` memo over a socket/emitter/observable with no up-front `onCleanup` | 🔴 leaks on dispose/re-run | `onCleanup` (before the first `await`/`yield`) that cancels the source; `try/finally`/`.return()` can't unwind a parked generator |
 | `refresh()` called inside a computation | 🔴 throws | call from handlers/actions |
 | `serverFn.GET` property access, `serverFn.withOptions(` on a server function reference | 🔴 removed | `GET(fn)` wrapper at declaration site; `withMeta(fn, meta)` for metadata; `prepareRequest` for session-dynamic transport (see `solidjs-v2` skill, references/server-functions.md) |
-| `isRefreshing(` call (or imported from `solid-js`) | 🔴 removed in beta.15 | gone from `solid-js` exports; detect a refresh re-run by key comparison, or use `isPending`/`<Loading>` |
+| `renderToStringAsync` | 🔴 no such export | `await renderToStream(code, options)` |
+| rich server-function args without `enableRichArguments()` | 🔴 transport throws | call it once from `@solidjs/web/server-functions/rich-args` |
 | `<For>` callback shape vs keying mode mismatch (`item()` on keyed, `i()` on `keyed={false}`) | 🔴 type/runtime error | check the mode table |
 | Dynamic boolean `keyed={cond()}` with function children | 🟡 ambiguous shape | literal mode or key function |
 | `useX`-with-throw context wrapper hooks | 🔵 dead boilerplate | direct `useContext` (throws by itself) |
@@ -86,24 +87,19 @@ Run these over the changed files; each hit needs a fix or a justification.
   1.x smell in new clothes.
 - **Action call site**: an action may be defined in a component, but is it
   invoked only from an imperative scope? A component-body/computation call is
-  a transaction-starting write and throws in dev mode (since beta.17).
+  a transaction-starting write and throws in dev mode.
 - **Optimistic spinner off `isPending`**: a "Saving…" indicator driven by
   `isPending` on data the same action just wrote optimistically can never show —
-  not because the optimistic write masks it (that mask is removed as of
-  beta.21; optimistic writes are verdict-inert), but because a bare
+  not because the optimistic write masks it (optimistic writes are
+  verdict-inert), but because a bare
   `refresh()` after the write is a silent same-question re-ask and was never
   going to flip `isPending`. The flag belongs in the data (co-written
   `pending: true` or a separate `createOptimistic(false)`); if the reload
   itself should read pending, that needs an explicit `affects(target)` before
   the `refresh()`.
-- **Stale beta.17–20 mask assumptions**: code (or comments) that reason about
-  an optimistic write "masking" `isPending` store-wide, or that treat a bare
-  `refresh()` as if it were pending on its own — both were beta.17–beta.20
-  behavior, removed/superseded in beta.21 (`question-scoped-pending-affects`).
-  On beta.21+ typings this silently changes UI (a spinner that used to show now
-  doesn't, or vice versa) with no compiler error to catch it — flag any
-  `isPending` use next to an optimistic write and check it against the current
-  rule, not habit.
+- **SSR setter writes**: signal/store setters in server render are deprecated
+  and warn; optimistic server setters are no-ops. Model incoming changes as
+  async sources instead of pushing through setters.
 - **Granularity**: selection/derived caches notifying whole collections →
   `createProjection`. Fixed-slot lists diffed with `<For>` → `<Repeat>`.
 - **Shallow-store writes**: with `{ shallow: true }`, are nested raw records
@@ -141,6 +137,5 @@ Run these over the changed files; each hit needs a fix or a justification.
 Report findings ordered by severity with `file:line`, the broken expectation
 (one line), and the concrete 2.0 fix. Note clean areas that were checked.
 For deep API verification during review, the `solidjs-v2` skill's references
-cover signatures; installed typings in `node_modules` are final word — the
-betas churn the public API freely (e.g. `isRefreshing` was a public `solid-js`
-export from beta.0 through beta.14, *then* removed in beta.15).
+cover signatures; installed typings in `node_modules` are the final word for a
+moving prerelease API.

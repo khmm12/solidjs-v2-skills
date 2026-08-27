@@ -1,7 +1,7 @@
 # Server components (experimental preview)
 
-Verified against solid-js@2.0.0-beta.28 / @solidjs/web@2.0.0-beta.28
-(published typings) and upstream `90fcbd0a` sources.
+Verified against solid-js@2.0.0-rc.3 / @solidjs/web@2.0.0-rc.3
+(published typings) and upstream `af6fee86` sources.
 
 Server components are an **experimental preview outside Solid 2.0's stability
 contract**, not a stable 2.0 API. They live under conditional
@@ -47,7 +47,7 @@ ordinary server data. Consume the promise of a component through
 refetches. Install the transport once before hydration or client rendering;
 the package is side-effect-free, so a bare import is insufficient.
 
-Enable compilation with `vite-plugin-solid >= 3.0.0-next.16`:
+Enable compilation with `@solidjs/vite-plugin`:
 
 ```ts
 solid({ serverFunctions: { components: true } })
@@ -74,8 +74,14 @@ Key public integration surfaces are intentionally small:
 
 ## Footguns
 
-- This preview can change independently of stable Solid 2.0 APIs; pin both
-  `@solidjs/web` and `vite-plugin-solid` preview versions.
+- This preview can change independently of stable Solid 2.0 APIs; pin matching
+  `@solidjs/web` and `@solidjs/vite-plugin` prerelease versions.
+- App context never crosses a server-component root. The component renders
+  inline at document time but standalone on refetch/mutation responses, so
+  reading an outer Provider would diverge. Default-less `useContext` throws an
+  error explaining the boundary; defaulted contexts read their default.
+  Providers created inside the server component work normally, as do the
+  framework's Loading/Errored/reveal boundary contexts.
 - The current boundary is a real `<dx-frame data-fid="…">` custom element,
   not an invisible marker range. Account for that DOM/CSS/layout seam (custom
   elements are inline by default) instead of assuming the server component

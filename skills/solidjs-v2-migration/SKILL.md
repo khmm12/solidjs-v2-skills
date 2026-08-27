@@ -1,6 +1,6 @@
 ---
 name: solidjs-v2-migration
-description: Migrate a Solid 1.x codebase, file, or component to SolidJS 2.0 (solid-js 2.x / next / beta). Use when converting code that imports solid-js/web, solid-js/store, createResource, Suspense, onMount, batch, or other 1.x APIs to the 2.0 equivalents. Not for writing new v2 code from scratch (see solidjs-v2).
+description: Migrate a Solid 1.x codebase, file, or component to SolidJS 2.0 (solid-js 2.x / next / RC). Use when converting code that imports solid-js/web, solid-js/store, createResource, Suspense, onMount, batch, or other 1.x APIs to the 2.0 equivalents. Not for writing new v2 code from scratch (see solidjs-v2).
 ---
 
 # Migrate Solid 1.x → 2.0
@@ -14,16 +14,19 @@ file is the workflow.
 
 - Source must be Solid 1.x (imports like `solid-js/web`, `solid-js/store`,
   `createResource`, `Suspense`). Target version: whatever `solid-js@2.x` /
-  `@solidjs/web` beta the project declares (or the latest, if you're also
+  `@solidjs/web` prerelease the project declares (or the latest, if you're also
   bumping `package.json`).
-- Betas drift. The installed typings (`node_modules/solid-js/types`,
+- Prereleases drift. The installed typings (`node_modules/solid-js/types`,
   `@solidjs/web`) outrank docs and this skill's references when they disagree.
-- Upgrade `solid-js`, `@solidjs/web`, and `babel-preset-solid` together.
+- Upgrade `solid-js`, `@solidjs/web`, and the Solid compiler integration
+  together. `babel-preset-solid` is replaced by `@solidjs/babel-plugin`; Vite
+  uses `@solidjs/vite-plugin` (native `@solidjs/compiler` by default).
 
 ## Pass 1 — mechanical (grep-and-replace, low judgement)
 
-1. Dependencies: `solid-js@2.x`, add `@solidjs/web`, matching
-   `babel-preset-solid`.
+1. Dependencies: `solid-js@2.x`, add `@solidjs/web`, and replace
+   `babel-preset-solid` with matching `@solidjs/babel-plugin` (or use
+   `@solidjs/vite-plugin`).
 2. `tsconfig.json`: `"jsxImportSource": "@solidjs/web"`.
 3. Import paths and pure renames — tables at the top of
    `references/migration-map.md`. Greppable: `solid-js/web`, `solid-js/store`,

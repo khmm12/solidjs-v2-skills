@@ -1,8 +1,8 @@
 # Solid 1.x → 2.0 migration map
 
 Full rename/removal table with before/after recipes. Source: official
-MIGRATION.md + RFCs at solidjs/solid@next (90fcbd0a), verified against
-solid-js@2.0.0-beta.28 typings.
+MIGRATION.md + RFCs at solidjs/solid@next (af6fee86), verified against
+solid-js@2.0.0-rc.3 typings.
 
 ## Import paths (mechanical)
 
@@ -137,13 +137,13 @@ const addTodo = action(function* (todo) {
 Define actions during component setup if convenient, but invoke them only from
 event handlers, effect callbacks, `onSettled`, or another imperative scope.
 Calling an action directly in a component body or computation throws in dev
-(`ACTION_CALLED_IN_OWNED_SCOPE`, beta.17) and can livelock the tracked scope.
+(`ACTION_CALLED_IN_OWNED_SCOPE`) and can livelock the tracked scope.
 
 `startTransition`/`useTransition` → delete; transitions are built-in. Pending
 UI: `isPending` / `<Loading on={...}>` — but `isPending` is question-scoped:
 a bare `refresh()` after a mutation is a silent same-question re-ask (it
 never flips `isPending`), and an optimistic write is verdict-inert (it
-doesn't mask or decree anything, as of beta.21). So drive *this* mutation's
+doesn't mask or decree anything). So drive *this* mutation's
 "Saving…" state from a co-written flag in the data, not from `isPending`; if
 you want the reload itself to read as pending, declare it with
 `affects(target)` before the `refresh()` (see `solidjs-v2` skill,

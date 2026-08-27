@@ -12,7 +12,7 @@ Four axes, sourced from the verified references (`skills/solidjs-v2/references/`
 
 | Axis | Question | What a wrong answer looks like |
 |---|---|---|
-| `api` | API understanding — signatures, what exists / was removed | invented args, `createResource`, importing removed `isRefreshing` |
+| `api` | API understanding — signatures and current exports | invented args, `createResource`, stale SSR helpers |
 | `pattern` | Idiomatic basic patterns | `getBoundingClientRect` in a `ref`, "createEffect flashes" |
 | `react` | Solid vs React | destructured props, deps array, passing accessors as values |
 | `v1` | Solid 2.0 vs 1.x | `batch()`, `onMount`, `solid-js/store`, `<Index>`, `createSelector` |
@@ -25,14 +25,16 @@ skill overrides that.
 
 The runner supports two answer backends through `--provider`:
 
-- **`claude`** (default) — calls `claude -p`. The grader is also Claude
-  (`--grader sonnet` by default).
+- **`claude`** (default) — calls `claude -p`.
 - **`codex`** — calls `codex exec` with an ephemeral session, a read-only
   sandbox, and JSONL output. Every run gets a fresh temporary `CODEX_HOME`
   containing only a copy of the current authentication file—no user config,
   `AGENTS.md`, skills, plugins, MCP servers, memories, or history. The answer
-  model is selected with the same `--models` flag. Grading still uses Claude,
-  so answer-provider comparisons share one judge.
+  model is selected with the same `--models` flag.
+
+The grader defaults to Claude Sonnet. Select a Codex judge with
+`--grader-provider codex --grader <model>`; `--reasoning` controls Codex answer
+models and `--grader-reasoning` controls a Codex grader.
 
 Runs use one answer provider at a time. Keeping provider in the raw result and
 summary avoids ambiguous model names and makes separate runs easy to compare.
@@ -126,10 +128,14 @@ node evals/run.mjs --questions B1,B2 --conditions content     # iterate on one e
 node evals/run.mjs --conditions deployed --no-grade           # delivery/trigger rate only (near-free)
 node evals/run.mjs --provider codex --models gpt-5.6-luna --quick
 node evals/run.mjs --provider codex --models gpt-5.6-luna --questions A9,A10 --conditions content
+node evals/run.mjs --provider codex --models gpt-5.6-luna --reasoning low \
+  --grader-provider codex --grader gpt-5.6-terra --grader-reasoning medium
 ```
 
-Flags: `--provider` (`claude` or `codex`), `--models`, `--conditions`, `--n`, `--grader`, `--concurrency`,
-`--questions` (csv ids or `axis:<name>`), `--quick`, `--no-grade`.
+Flags: `--provider` / `--grader-provider` (`claude` or `codex`), `--models`,
+`--reasoning`, `--conditions`, `--n`, `--grader`, `--grader-reasoning`,
+`--concurrency`, `--questions` (csv ids or `axis:<name>`), `--quick`,
+`--no-grade`.
 
 Output: a markdown summary (delivery trigger rate + quality pass-rate matrix +
 per-axis + failure list) and a raw JSON. `results/` is git-ignored — it's run

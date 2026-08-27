@@ -1,7 +1,7 @@
 # Server functions
 
-Verified against solid-js@2.0.0-beta.28 / @solidjs/web@2.0.0-beta.28 (published
-typings) and `next@90fcbd0a` sources. Server functions are a core Solid 2.0
+Verified against solid-js@2.0.0-rc.3 / @solidjs/web@2.0.0-rc.3 (published
+typings) and `next@af6fee86` sources. Server functions are a core Solid 2.0
 feature, not a metaframework add-on: any Vite app gets them, with or without a
 router/Start.
 
@@ -17,12 +17,10 @@ export async function addTodo(title: string) {
 
 A function-level `"use server"` extracts that function to the server build and
 replaces it with a fetch-backed reference on the client. A **module-level**
-directive does the same for every export — but has one live compiler bug:
-a wrapped export (`export const x = wrapper(async () => { "use server"; ... })`)
-is silently **dropped** from the client build under a module-level directive —
-only direct function exports become references. Function-level directives
-don't have this problem (the wrapper call round-trips in both builds — see
-`GET` below). Prefer the function-level directive when any export is wrapped.
+directive makes every export precisely a server function. Wrapped exports such
+as `export const x = GET(async () => ...)` are a compile error: move the
+directive into the inner function so the wrapper composes in shared code.
+Plain aliases and separate declaration/export remain valid.
 
 **Privacy is dead-code elimination, not a runtime check.** The directive pass
 removes the function body from client output and DCEs now-unused imports —
@@ -71,17 +69,22 @@ if (url.pathname.startsWith("/_server")) {
 `handleServerFunctionRequest` resolves the id, rejects GET unless the function
 declared `GET` (POST remains accepted for every function), decodes args, runs
 the function under a request-event scope, and encodes the result. Every hook
-is optional; the bare handler works alone. `@solidjs/web/server-functions`
+is optional; the bare handler works alone. Same-origin protection is enabled
+by default through `csrf`; requests without `Sec-Fetch-Site`, `Origin`, or
+`Referer` are rejected unless `allowRequestsWithoutOriginCheck` is explicitly
+enabled. Set `csrf: false` only behind another trusted protection layer.
+`@solidjs/web/server-functions`
 (no `/server` or `/client` suffix)
 resolves to whichever half matches the current build condition — pick the
 explicit subpath only when you need one half's types outside its own build
 (e.g. a universal integration file).
 
-Inside a function body: `getRequestEvent()` (from `@solidjs/web`, same
-signal as elsewhere in SSR) reads the current request; `getServerFunctionMeta()`
-(from the server subpath) reads the calling function's own id — useful for
-keying caches/logs. In-process SSR calls run the original function directly
-(no HTTP loopback), under a derived event marked `serverOnly`.
+Inside a function body: `getRequestEvent()` (from `@solidjs/web`, same signal
+as elsewhere in SSR) reads the current request;
+`getServerFunctionInvocation()` (from the server-functions entry) returns
+`{ id }` for the current call — useful for keying caches/logs. In-process SSR
+calls run the original function directly (no HTTP loopback), under a derived
+event marked `serverOnly`.
 
 ## Response helpers — `respond`, `redirect`, `reload`
 
@@ -117,6 +120,18 @@ async function login(formData: FormData) {
 ResponseEnvelope`** — it's a registered-symbol brand so it survives separately
 bundled client/server copies of the class; `instanceof` can silently fail
 across bundles.
+
+### Thrown errors are sanitized by default
+
+Outside the `development` build condition, a plain thrown value reaches the
+client as a generic `Error("Internal Server Error")`; messages, stacks, and own
+properties are not leaked. Dev builds preserve the original error for DX.
+This policy is selected by the package build variant, not `NODE_ENV`.
+
+For intentionally client-facing errors, return/throw a `respond(...)` envelope
+or brand an error with `markSafeError(error)` from `@solidjs/web`. Use
+`isSafeError()` for the cross-bundle-safe check. Thrown `Response` and
+`ResponseEnvelope` control flow is already intentional and stays intact.
 
 ## `GET`, `withMeta`, and the metadata channel
 
@@ -197,7 +212,6 @@ configureServerFunctionsClient({
       return isSpecial(response) ? consumeSpecial(response, context) : undefined;
     },
   },
-  serializeArgs: args => encodeRichArgs(args),
 });
 ```
 
@@ -208,8 +222,16 @@ lists must be JSON-safe (null, booleans, strings, finite numbers, arrays, and
 plain/null-prototype objects), except that one `Blob`, `File`, `FormData`, or
 other natively encoded body may be passed directly. `Date`, `Map`, `Set`,
 typed arrays, cycles, `undefined`, non-finite numbers, and class instances
-need an explicit rich `serializeArgs` opt-in whose wire format the server can
-decode; `codec` alone does not put the rich serializer in the client bundle.
+need the application-facing opt-in:
+
+```ts
+import { enableRichArguments } from "@solidjs/web/server-functions/rich-args";
+enableRichArguments();
+```
+
+That entry installs the codec's write half as `serializeArgs`; importing it is
+the bundle-level opt-in. `codec` alone does not ship the rich argument encoder.
+Set `serializeArgs` directly only for a custom wire encoding.
 
 On the server, `configureServerFunctionsServer` accepts server-wide
 `transformResult`, `transformDirectResult`, and `handleNoJS`; per-request
@@ -267,15 +289,14 @@ A reference's `.url` doubles as a form `action`. The presence/absence of the
 from an unscripted one (no-JS form post, direct HTTP) — unscripted calls get
 their args parsed from FormData/query string instead of the codec.
 
-The built-in browser-form path uses `createNoJSHandler()`. In beta.28 its exact
-runtime behavior is:
+The built-in browser-form path uses `createNoJSHandler()`. Its runtime behavior is:
 
 - a **truthy**, non-`Response` returned/thrown outcome is stored in the one-shot
   `flash` cookie, then redirected to the request referer (or `base`/`/` when no
   usable referer exists) with 303;
 - a falsy outcome (`0`, `false`, `""`, `null`, `undefined`) is **not flashed**
   because the runtime uses a truthiness guard. It still redirects, so the next
-  render cannot replay that outcome — a beta.28 footgun, not falsy-safe error
+  render cannot replay that outcome — a footgun, not falsy-safe error
   transport;
 - a returned or thrown `Response` carries its own headers. Its `Location` is
   resolved against the app base and a valid redirect status is retained; with
@@ -328,26 +349,37 @@ async function handler(request: Request) {
 `provideRequestEvent` establishes the AsyncLocalStorage scope
 `getRequestEvent()` reads from; server functions pick it up automatically as
 their default event provider if nothing else establishes one. `RequestEvent`
-is `{ request: Request; locals: Record<string | number | symbol, any> }` —
-frameworks extend `locals` with their own shape.
+is `{ request: Request; locals: RequestEventLocals }`. Type the permissive
+locals bag through module augmentation:
+
+```ts
+declare module "@solidjs/web" {
+  interface RequestEventLocals {
+    user: User;
+  }
+}
+```
+
+Put the declaration in a module (`export {}` or a top-level import); a global
+script-style `declare module` replaces the package declaration instead of
+augmenting it.
 
 ## Footguns
 
 - Validating in wrapper position (`withValidation(schema, fn)`-style) doesn't
   work — wrappers never reach the HTTP dispatch path (see the DCE/body-is-the-
   boundary section above). Validate at the top of the function body.
-- Module-level `"use server"` on a file with any wrapped export
-  (`GET(fn)`, `withMeta(fn, ...)`, or your own wrapper) silently drops that
-  export from the client build. Use the function-level directive when
-  wrapping.
+- Module-level `"use server"` on a wrapped export (`GET(fn)`, `withMeta(fn,
+  ...)`, or any call expression) is a compile error. Use the function-level
+  directive inside the wrapped function.
 - `instanceof ResponseEnvelope` can miss across separately bundled
   client/server entries — use `isResponseEnvelope()`.
 - Single-flight data only flows once something calls `subscribeFlightData` —
   a router with no registered consumer gets plain responses, not a bug to
   chase.
 - Default client arguments are deliberately JSON-safe, not the full result
-  codec. Configure `serializeArgs` explicitly before passing rich values.
+  codec. Call `enableRichArguments()` before passing rich values.
 - A flash outcome is one-shot and cookie-sized; never use it for files or a
-  large result, and never flash a `Response` yourself. Beta.28 also drops
-  falsy outcomes from the built-in flash path; use a custom `handleNoJS` when
+  large result, and never flash a `Response` yourself. The built-in path drops
+  falsy outcomes; use a custom `handleNoJS` when
   those values carry meaning.
