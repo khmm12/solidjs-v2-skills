@@ -1,8 +1,8 @@
 # Solid 1.x → 2.0 migration map
 
 Full rename/removal table with before/after recipes. Source: official
-MIGRATION.md + RFCs at solidjs/solid@next (af6fee86), verified against
-solid-js@2.0.0-rc.3 typings.
+MIGRATION.md + RFCs at `solidjs/solid@5eb3250a`, verified against published
+solid-js@2.0.0-rc.5 typings/runtime.
 
 ## Import paths (mechanical)
 
@@ -109,9 +109,9 @@ const user = createMemo(() => fetchUser(id()));                // 2.0
 
 | Resource feature | 2.0 |
 |---|---|
-| `user.loading` | `<Loading>` boundary (initial render) + `isPending(() => user())` (revalidation) — but a bare `refresh(user)` is a **silent** same-question re-ask, it does not flip `isPending`; for a "loud" refetch declare it: `affects(user); refresh(user)`. For a "saving…" affordance during a mutation, use a co-written optimistic flag, not `isPending` (see `solidjs-v2` skill, async-and-actions.md → `isPending`/`affects()`) |
+| `user.loading` | `<Loading>` boundary (initial render) + `isPending(() => user())` (revalidation) — a bare `refresh(user)` is normally a **quiet** same-question re-ask; for a "loud" refetch declare it: `affects(user); refresh(user)`. For a "saving…" affordance during a mutation, use a co-written optimistic flag, not `isPending` (see `solidjs-v2` skill, async-and-actions.md → `isPending`/`affects()`) |
 | `user.error` + inline `<Show when={user.error}>` | `<Errored>` boundary (single error path) or effect `error` option |
-| `refetch()` | `refresh(user)` (from handlers/actions, not computations) — silent unless paired with `affects()` |
+| `refetch()` | `refresh(user)` (from handlers/actions, not computations) — returns a Promise for the next quiescent value, so `await refresh(user)` replaces code that awaited refetch completion; ignored/fire-and-forget remains valid. It is normally quiet unless paired with `affects()` |
 | `mutate(fn)` | `createOptimisticStore` + `action` (see below) |
 
 Collections: prefer `createProjection(async () => api.list(), [], { key: "id" })`
@@ -130,9 +130,15 @@ const [todos, setOptimistic] = createOptimisticStore(() => api.getTodos(), []);
 const addTodo = action(function* (todo) {
   setOptimistic(s => { s.push(todo); });
   yield api.addTodo(todo);
-  refresh(todos);
+  yield refresh(todos); // optional await point: rejects here and reverts on failure
 });
 ```
+
+For a mutation confirmed by a live subscription rather than a refetch, use
+`yield until(() => liveTodos.some(row => row.id === todo.id), { timeout })`.
+The predicate reads authoritative data rather than the action's own optimistic
+overlay, so the optimistic row cannot acknowledge itself. Always bound a
+drop-prone live channel with timeout/abort.
 
 Define actions during component setup if convenient, but invoke them only from
 event handlers, effect callbacks, `onSettled`, or another imperative scope.
@@ -141,13 +147,33 @@ Calling an action directly in a component body or computation throws in dev
 
 `startTransition`/`useTransition` → delete; transitions are built-in. Pending
 UI: `isPending` / `<Loading on={...}>` — but `isPending` is question-scoped:
-a bare `refresh()` after a mutation is a silent same-question re-ask (it
-never flips `isPending`), and an optimistic write is verdict-inert (it
-doesn't mask or decree anything). So drive *this* mutation's
+a bare `refresh()` after a mutation is normally a quiet same-question re-ask,
+and an optimistic write is verdict-inert (it doesn't mask or decree anything).
+So drive *this* mutation's
 "Saving…" state from a co-written flag in the data, not from `isPending`; if
 you want the reload itself to read as pending, declare it with
 `affects(target)` before the `refresh()` (see `solidjs-v2` skill,
 async-and-actions.md → `isPending` / `affects()` / Optimistic primitives).
+
+Published rc.5 has one held-transition edge where a directly observing render
+effect can see a one-frame pending pulse during a quiet refresh; the fix is
+post-rc.5. Do not migrate correctness logic to depend on refresh *never*
+pulsing — use explicit process state for that logic.
+
+### Server-function prerelease call sites
+
+Delete old reference properties such as `fn.GET` and `fn.withOptions(...)`.
+Declaration-static behavior is `GET(fn)` / `withMeta(fn, meta)`, session-wide
+dynamic headers belong in `prepareRequest`, and per-call
+`{ signal, keepalive, priority }` belongs in `invoke(fn, options, ...args)`.
+Server-function forms use the reference's bare `.url`; application calls use
+the callable, whose transport targets the separate `/data/` address.
+
+When consolidating functions into a module-level `"use server"` file, rc.5
+registers each evaluated terminal export. A wrapper around that export runs for
+HTTP and direct SSR and stays server-only, but every export must evaluate to a
+function. With a function-level directive, validation still belongs inside the
+function body; an outer wrapper only sees the lowered reference.
 
 ### `onError` / `catchError` → structural
 

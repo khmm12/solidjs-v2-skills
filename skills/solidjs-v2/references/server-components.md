@@ -1,7 +1,7 @@
 # Server components (experimental preview)
 
-Verified against solid-js@2.0.0-rc.3 / @solidjs/web@2.0.0-rc.3
-(published typings) and upstream `af6fee86` sources.
+Verified against solid-js@2.0.0-rc.5 / @solidjs/web@2.0.0-rc.5 published
+typings/runtime and `solidjs/solid@5eb3250a` sources.
 
 Server components are an **experimental preview outside Solid 2.0's stability
 contract**, not a stable 2.0 API. They live under conditional
@@ -65,12 +65,22 @@ client-owned slot ranges, their DOM identity, and client state survive server
 updates. A slot's optional `$key` gives an occurrence stable identity across
 reordering; positional identity is the default.
 
+rc.5 keys a live frame by the delivered server-function address (function id
+plus argument identity), so argument changes rebind the existing host instead
+of colliding with another call. The frame stream also carries the typed SSR
+`PreloadLink` descriptors registered by lazy/server-component assets, including
+late root assets; the client preserves and applies those records. Both are
+transport guarantees, not APIs for application components to drive manually.
+
 Key public integration surfaces are intentionally small:
 
 - client: `installServerComponents`, `createFrameHost`, `createFrameElement`,
   `applyFrameResponse`, `isFrameStreamResponse`, and the `Slot` type;
 - server: `Slot`, `renderServerComponent`, `serverComponentResponse`,
-  `frameTransformResult`, and `frameTransformDirectResult`.
+  `frameTransformResult`, `frameTransformDirectResult`, and
+  `frameTransformFlightResult`. Supply the last adapter as the server-function
+  handler's `transformFlightResult` when framed single-flight outcomes can carry
+  invalidated markup with the mutation envelope.
 
 ## Footguns
 
@@ -82,10 +92,10 @@ Key public integration surfaces are intentionally small:
   error explaining the boundary; defaulted contexts read their default.
   Providers created inside the server component work normally, as do the
   framework's Loading/Errored/reveal boundary contexts.
-- The current boundary is a real `<dx-frame data-fid="…">` custom element,
-  not an invisible marker range. Account for that DOM/CSS/layout seam (custom
-  elements are inline by default) instead of assuming the server component
-  adds no element.
+- The current boundary is a real `<solid-frame data-fid="…"
+  style="display:contents">` custom element, not an invisible marker range.
+  It is normally box/layout-transparent, but remains a real DOM node; account
+  for that seam instead of assuming the server component adds no element.
 - Call `installServerComponents()` explicitly and early. Installing after
   `hydrate()`/`render()` lets the first server-function response use the
   ordinary data decoder instead of the frame transport.

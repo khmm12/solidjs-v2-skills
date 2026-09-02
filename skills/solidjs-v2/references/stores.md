@@ -1,6 +1,7 @@
 # Stores: drafts, projections, helpers
 
-Verified against solid-js@2.0.0-rc.3 (published typings) and `next@af6fee86` sources/tests.
+Verified against solid-js@2.0.0-rc.5 / @solidjs/signals@2.0.0-rc.5 published
+typings/runtime and `solidjs/solid@5eb3250a` sources/tests.
 All store APIs are exported from `solid-js` (the `solid-js/store` subpath is gone).
 
 ## Draft-first setters (produce is the default)
@@ -150,6 +151,24 @@ const [cache, setCache] = createStore(draft => { draft.x = compute(); }, { x: 0 
 setCache(s => { s.override = true; });
 ```
 
+Do not catch readiness inside a derive. Reading another pending async source
+throws `NotReadyError`; that throw is the subscription/retry signal, especially
+during SSR where there is no persistent client subscription graph. A broad
+`try/catch` that returns the partially mutated draft can make the server commit
+an incomplete projection and never retry it. Let `NotReadyError` propagate (or
+rethrow it if a narrow catch must handle some other error); use `isPending` at a
+consumer boundary to present readiness rather than swallowing the derive read.
+
+Under active optimism, a derived store's source/derive draft reads
+**authoritative** state, not the caller's optimistic overlay. Fresh source
+landings fold into the retaining transaction and reveal atomically at settle;
+ordinary readers keep the committed view, while authoritative readers such as
+`latest(() => store.x)` and `until(() => store.x)` can see staged truth.
+Projection recomputes driven by a held transition likewise remain isolated:
+context-free readers see committed data until reveal; use
+`latest(() => projection.x)` for the explicit speculative read. Do not merge
+the caller's optimistic row into a source-authored draft by hand.
+
 ### Store-in-store views stay live
 
 A derive may return a foreign store or include one in its returned root. That
@@ -173,6 +192,27 @@ Structural tracking chains through the outer wrapper to the inner store:
 reconcile/add/delete invalidates `<For>`/`mapArray`, `Object.keys`, `snapshot`,
 and `deep`. Do not clone the inner store as a workaround; that discards its
 fine-grained identity.
+
+### Patch-driven lists are a compiler/runtime integration, not an app API
+
+rc.5 can opt compiled member bindings and eligible keyed `<For>` consumers into
+a patch channel so structural store updates drive the list directly. The
+compiler option is `patchDriver?: boolean | string` and defaults to `false`.
+Application code still writes ordinary store drafts/reconciles and renders an
+ordinary `<For>`; do not call `patchableRaw`, `registerPatch`, `registerRowOps`,
+`registerSlotPatch`, `rowProof`, `driveList`, or `installListDriver` by hand.
+Those published exports are compiler/renderer integration seams, not general
+store primitives.
+
+Published rc.5 can drive ordinary, projection, and optimistic store arrays when
+the compiler emits eligible patch-mode rows. Projection recomputes emit
+reconcile-derived row/slot operations; optimistic families emit lane-timed
+identity row operations and an identity resync on revert. Explicit custom-key
+lists still decline to the classic path, and an engaged list can fall back if
+its subject later leaves the proven contract. Shallow slot-patch registration
+supports multiple driven consumers. Enabling the optimization must not change
+application behavior; if it does, disable it and report a compiler/runtime bug
+rather than coding against the patch protocol.
 
 ## Raw platform objects and class instances
 

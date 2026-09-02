@@ -36,7 +36,7 @@ Run these over the changed files; each hit needs a fix or a justification.
 | `reconcile\([^)]*,\s*\{` | 🔴 1.x options object | pass the key directly; omit for `"id"`, use `null` for positional |
 | `markRaw` imported from `solid-js` | 🔴 fake public API | no root export; use `{ shallow: true }` / replace the slot |
 | `/\*@once\*/` | 🟡 ignored marker | reactive read / `defaultValue` / `untrack` |
-| `\.loading\b\|\.error\b` on async values | 🔴 no such props | `<Loading>`/`isPending(() => x())` for loading (bare `refresh()` is silent — pair with `affects()` for a loud reload) / `<Errored>` for error |
+| `\.loading\b\|\.error\b` on async values | 🔴 no such props | `<Loading>`/`isPending(() => x())` for loading (bare `refresh()` is normally quiet — pair with `affects()` for a loud reload) / `<Errored>` for error |
 
 ### React-isms
 
@@ -59,6 +59,7 @@ Run these over the changed files; each hit needs a fix or a justification.
 | Signal/store write inside memo/compute/component body | 🔴 throws in dev | derive, or move write to handler/action |
 | `actionFn()` invoked inside memo/compute/component body | 🔴 dev error (`ACTION_CALLED_IN_OWNED_SCOPE`); may livelock in prod | invoke from handler/effect callback/`onSettled` |
 | `ownedWrite: true` on app state | 🟡 escape-hatch abuse | derive instead; ownedWrite is for internal flags |
+| `untrack(() => setX(...))` / action or `refresh` hidden in `untrack` | 🔴 still an owned write/call | untrack suppresses read tracking, not ownership; move to an imperative phase |
 | Top-level `const x = props.x` / store read in component body | 🟡 warns, stale | read in JSX/memo; `untrack` if deliberate |
 | `onCleanup` inside `onSettled`/`createTrackedEffect` | 🔴 throws | return cleanup |
 | Cleanup returned from `onSettled` fired out of band (event handler/tracked effect/nested `onSettled`) | 🔴 dev error, dropped in prod | call the setup helper from the component body (owned scope) |
@@ -67,7 +68,12 @@ Run these over the changed files; each hit needs a fix or a justification.
 | Async read with no `<Loading>` ancestor | 🟡 root mount deferred | add boundary where fallback UI is wanted |
 | `async function*` memo over a socket/emitter/observable with no up-front `onCleanup` | 🔴 leaks on dispose/re-run | `onCleanup` (before the first `await`/`yield`) that cancels the source; `try/finally`/`.return()` can't unwind a parked generator |
 | `refresh()` called inside a computation | 🔴 throws | call from handlers/actions |
-| `serverFn.GET` property access, `serverFn.withOptions(` on a server function reference | 🔴 removed | `GET(fn)` wrapper at declaration site; `withMeta(fn, meta)` for metadata; `prepareRequest` for session-dynamic transport (see `solidjs-v2` skill, references/server-functions.md) |
+| `until(() => liveValue)` with no timeout/signal on a drop-prone channel | 🟡 action may stay optimistic forever | bound acknowledgement with `{ timeout }` or `{ signal }` |
+| `serverFn.GET` property access, `serverFn.withOptions(` on a server function reference | 🔴 removed | `GET(fn)` / `withMeta(fn, meta)` for declaration metadata; `prepareRequest` for session state; `invoke(fn, options, ...args)` for signal/keepalive/priority |
+| `fetch(serverFn.url, { body: new URLSearchParams(...) })` in browser code | 🔴 bare form-shaped scripted POST gets 400 before dispatch | call the reference; the runtime uses its `/data/` address and format |
+| `GET(...)` around a mutation | 🔴 CSRF/cache contract violation | leave mutations POST-only; declared reads skip the origin gate by default |
+| `patchableRaw\|registerPatch\|registerRowOps\|registerSlotPatch\|installListDriver` in app code | 🟡 compiler/runtime internals leaked into app | write normal store updates and `<For>`; compiler integration owns the patch channel |
+| `<SelectedContent` | 🔴 wrong JSX intrinsic | lowercase `<selectedcontent>` |
 | `renderToStringAsync` | 🔴 no such export | `await renderToStream(code, options)` |
 | rich server-function args without `enableRichArguments()` | 🔴 transport throws | call it once from `@solidjs/web/server-functions/rich-args` |
 | `<For>` callback shape vs keying mode mismatch (`item()` on keyed, `i()` on `keyed={false}`) | 🔴 type/runtime error | check the mode table |
@@ -83,17 +89,20 @@ Run these over the changed files; each hit needs a fix or a justification.
 - **Boundary ownership**: `isPending` reads placed under the `Loading` boundary
   that owns the data read? Pending indicators outside can never fire.
 - **Mutation shape**: server writes wrapped in `action()` with optimistic
-  state and a final `refresh()`? Ad-hoc async handlers flipping flags are the
-  1.x smell in new clothes.
+  state and a final `refresh()` or `until()` acknowledgement? If later code
+  assumes the refresh finished, it must `await`/`yield refresh()`; ignored
+  fire-and-forget is valid only when completion is intentionally unobserved.
 - **Action call site**: an action may be defined in a component, but is it
   invoked only from an imperative scope? A component-body/computation call is
   a transaction-starting write and throws in dev mode.
 - **Optimistic spinner off `isPending`**: a "Saving…" indicator driven by
-  `isPending` on data the same action just wrote optimistically can never show —
+  `isPending` on data the same action just wrote optimistically normally stays
+  hidden —
   not because the optimistic write masks it (optimistic writes are
   verdict-inert), but because a bare
-  `refresh()` after the write is a silent same-question re-ask and was never
-  going to flip `isPending`. The flag belongs in the data (co-written
+  `refresh()` after the write is a quiet same-question re-ask. (Published rc.5
+  has a narrow held-landing one-frame pulse defect, which is another reason not
+  to treat this as process state.) The flag belongs in the data (co-written
   `pending: true` or a separate `createOptimistic(false)`); if the reload
   itself should read pending, that needs an explicit `affects(target)` before
   the `refresh()`.
@@ -113,6 +122,23 @@ Run these over the changed files; each hit needs a fix or a justification.
   inverse claim that projection/derived-store returned roots cannot perform an
   authoritative swap. At a shallow boundary reconciliation compares records
   by reference rather than mutating their fields.
+- **Derived-store readiness**: a broad catch around async reads in a derive can
+  swallow `NotReadyError`, commit a partial value, and prevent SSR retry. Let
+  readiness propagate; do not "stabilize" a projection by catching it.
+- **Patch-driver boundary**: published rc.5 can drive eligible ordinary,
+  projection, and optimistic store arrays; projection recomputes emit row/slot
+  ops and optimistic structural edits emit in-flight row ops plus revert
+  resync. Explicit custom-key lists still decline to the classic path, and
+  shallow arrays support multiple consumers. Application code must not force
+  admission or call patch APIs.
+- **Server-function wrapping**: an outer wrapper around a function-level
+  directive cannot guard HTTP dispatch, so validation belongs in the body.
+  A module-level server file is deliberately different: the evaluated terminal
+  wrapped function is registered whole and runs on HTTP + direct SSR. Do not
+  report that rc.5 module-level wrapped exports are compile errors.
+- **Custom server-function fetch**: does it forward `init`, preserve same-origin,
+  return an unread response, and avoid replay after any response was received?
+  Dropped signals break abort/live teardown; replay can duplicate mutations.
 - **Raw-object assumptions**: platform/native host objects are raw by default;
   their slot reassignment is reactive but internal mutation is not. User class
   instances remain wrappable, and `markRaw` is not a public root API.

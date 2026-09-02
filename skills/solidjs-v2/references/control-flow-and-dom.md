@@ -1,7 +1,7 @@
 # Control flow and DOM
 
-Verified against solid-js@2.0.0-rc.3 / @solidjs/web@2.0.0-rc.3 typings and
-`next@af6fee86` sources/tests.
+Verified against solid-js@2.0.0-rc.5 / @solidjs/web@2.0.0-rc.5 published
+typings/runtime and `solidjs/solid@5eb3250a` sources/tests.
 Control-flow components live in `solid-js`; `render`/`hydrate`/`Portal`/
 `Dynamic`/`dynamic` live in `@solidjs/web`.
 
@@ -178,9 +178,17 @@ hydration id**, not by module identity, so a client callsite without
 - Form-field stateful props remain props and are special-cased: `input.value`,
   `defaultValue`, `checked`, `defaultChecked`, `select.value`, `option.value/
   selected/defaultSelected`, `textarea.value`, `video/audio.muted/defaultMuted`.
+- rc.5 types the platform's customizable-select child as lowercase
+  `<selectedcontent>`. It is an intrinsic HTML element, not a Solid control-flow
+  component and not `<SelectedContent>`.
 - For DOM initial state use platform defaults (`defaultValue={x}`), not a
   frozen reactive read. `/*@once*/` is gone — keep reactive reads reactive, or
   use `untrack` in JS for a deliberate one-shot.
+
+The rc.5 compiler treats JSX nesting that the browser parser would restructure
+as an error rather than a warning. Fix the invalid HTML (tables, paragraphs,
+forms, and similar parser-sensitive cases); `validate: false` is an integration
+escape hatch, not an application workaround.
 
 ### `class` — object/array forms (no `classList`)
 
@@ -253,6 +261,31 @@ import { renderToString, renderToStream, isServer, isDev } from "@solidjs/web"; 
 `await renderToStream(code, options)`; the returned stream is `PromiseLike<string>`.
 `renderToStringAsync` does not exist. Consume a stream exactly once through
 `await`, `.pipe()`, `.pipeTo()`, or `.readable`; mixing distinct consumers throws.
+
+### Typed SSR preload descriptors
+
+SSR asset manifests may carry explicit `preloads?: PreloadLink[]`; they are not
+inferred automatically from an asset's scripts/styles. The published shape is:
+
+```ts
+import type { JSX, PreloadLink } from "@solidjs/web";
+
+const preload: PreloadLink = {
+  href: "/fonts/ui.woff2",
+  as: "font",                    // JSX.HTMLPreloadAs
+  type: "font/woff2",
+  crossorigin: "anonymous",
+  fetchpriority: "high",        // JSX.HTMLFetchPriority
+};
+```
+
+`PreloadLink` also accepts `integrity`, `referrerpolicy`, and `media`.
+`JSX.HTMLPreloadAs` is `"fetch" | "font" | "image" | "script" | "style" |
+"track"`; `JSX.HTMLFetchPriority` is `"high" | "low" | "auto"`. These are
+renderer/SSR integration types. Ordinary application markup should continue to
+author `<link rel="preload" ...>` normally. String and streaming SSR, lazy
+module resolution, and frame responses preserve the descriptors; development
+warns when a `font`/`fetch` preload omits `crossorigin`.
 
 ### `Portal` — client-only island
 

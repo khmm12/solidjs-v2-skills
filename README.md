@@ -8,7 +8,8 @@ React habits can look plausible and still be wrong. This repository gives
 agents a verified v2 reference for writing new code, migrating 1.x projects,
 and reviewing diffs.
 
-> Current target: `solid-js@2.0.0-rc.3` and `@solidjs/web@2.0.0-rc.3`.
+> Current target: `solid-js@2.0.0-rc.5`, `@solidjs/web@2.0.0-rc.5`,
+> `@solidjs/signals@2.0.0-rc.5`, and `@solidjs/diagnostics@2.0.0-rc.5`.
 
 ## Measured effect
 
@@ -17,6 +18,10 @@ and reviewing diffs.
 On the full 58-question rc.3 exam, Luna at low reasoning went from **5%**
 without the skill to **60%** with the deployed skill. It retrieved the right
 skill content in all 58 deployed cases.
+
+These are historical rc.3 results. The current rc.5 bank contains 70 questions,
+so the command below documents the original run rather than reproducing it from
+current `HEAD`.
 
 This is a single run, not a confidence interval. Terra at medium reasoning
 graded each answer against a fixed, source-backed rubric.
@@ -136,8 +141,9 @@ This is unnamespaced and updates immediately with `git pull`.
 
 The references are distilled from Solid's `documentation/solid-2.0/`
 (MIGRATION.md and RFC 01–12) and the official `packages/solid/CHEATSHEET.md` at
-`solidjs/solid@af6fee86`. API claims are checked against the published rc.3
-typings first, then upstream sources and tests.
+`solidjs/solid@5eb3250a` (the published rc.5 tag commit). API claims are checked
+against the published rc.5 typings and runtime first, then the matching
+upstream sources and tests.
 
 Solid 2.0 is still a prerelease. Before teaching a new API, the maintenance
 workflow also checks pending upstream changesets. See [AGENTS.md](AGENTS.md)

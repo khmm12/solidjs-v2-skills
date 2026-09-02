@@ -37,7 +37,8 @@ Prereleases drift: when docs and the installed package disagree, trust the typin
 3. **Never write signals/stores or invoke an action inside a reactive scope**
    (memo, compute, component body) — throws in dev. Define actions there if
    useful, but invoke/write from event handlers, effect callbacks, actions, or
-   `onSettled`. Derive instead of writing back.
+   `onSettled`. `untrack()` suppresses read tracking but does not exempt writes.
+   Derive instead of writing back.
 4. **No top-level reactive reads in component bodies** and no destructured
    props — warns, value goes stale. Read via `props.x` inside JSX / memos /
    effect computes; `untrack(() => ...)` for deliberate one-shots.
@@ -53,7 +54,8 @@ Prereleases drift: when docs and the installed package disagree, trust the typin
    — no `createResource`. Wrap consumers in `<Loading fallback={...}>`;
    errors go to `<Errored>`. In-flight-change indicators: `isPending(() => user())`
    — fires for changed inputs and `affects()` declarations; a bare `refresh()`
-   is silent.
+   is normally quiet. `await refresh(source)` waits for the settled re-ask;
+   `until(predicate)` waits for a truthy live-source acknowledgement.
 7. **Store setters take a draft**: `setStore(s => { s.a.b = 1; })` (produce is
    the default). Store APIs (`createStore`, `reconcile`, `snapshot`…) are
    exported from `solid-js` — `solid-js/store` does not exist.
@@ -76,13 +78,13 @@ Read the file matching the task before writing code in that area:
 |---|---|
 | Quick API lookup, import list, full 1.x→2.0 footgun list | `references/cheatsheet.md` (official) |
 | Signals, memos, split/render effects and paint timing, `createReaction`, batching/flush, lifecycle, ownership, dev diagnostics | `references/reactivity.md` |
-| Data fetching, loading values, async iterator completion, Loading/Errored, isPending/latest/resolve/refresh, action call scope/errors, optimistic UI | `references/async-and-actions.md` |
-| createStore, reconcile, projections, nested store-view structural tracking, snapshot/deep, merge/omit, storePath | `references/stores.md` |
+| Data fetching, loading values, async iterator completion, Loading/Errored, isPending/latest/resolve/awaitable refresh/until, action call scope/errors, optimistic UI | `references/async-and-actions.md` |
+| createStore, reconcile, projections, nested store-view structural tracking, compiler patch-driver boundary, snapshot/deep, merge/omit, storePath | `references/stores.md` |
 | For/Repeat/Show/Switch/Reveal, dynamic/lazy components, lazy SSR/hydration identity, class/attributes/events/refs/directives, render entries | `references/control-flow-and-dom.md` |
 | tsconfig, JSX types, import paths, Context typing, test setup | `references/typescript-setup.md` |
 | Composed patterns: SWR query, optimistic mutations, selection projections, global state, demand-driven resources | `references/patterns.md` |
 | Naming a primitive/composable (`create*` vs `use*`), cross-cutting conventions | `references/conventions.md` |
-| `"use server"` directive, server-function privacy/DCE, respond/redirect/reload, GET/withMeta, prepareRequest, single-flight, no-JS, getRequestEvent | `references/server-functions.md` |
+| `"use server"` directive, module/function wrappers, server-function addressing/invoke/live, respond/redirect/reload, GET/withMeta, fetch/prepareRequest, named single-flight, no-JS, getRequestEvent | `references/server-functions.md` |
 | Experimental server components, frames, client slots/state preservation, `installServerComponents`, `serverFunctions: { components: true }` | `references/server-components.md` |
 
 ## Failure modes

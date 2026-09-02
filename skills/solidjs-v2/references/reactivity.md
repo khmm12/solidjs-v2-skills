@@ -1,6 +1,7 @@
 # Reactivity: batching, effects, ownership
 
-Verified against solid-js@2.0.0-rc.3 (published typings) and `next@af6fee86` sources/tests.
+Verified against solid-js@2.0.0-rc.5 / @solidjs/diagnostics@2.0.0-rc.5
+published typings/runtime and `solidjs/solid@5eb3250a` sources/tests.
 
 ## Microtask batching — reads lag writes
 
@@ -125,6 +126,12 @@ const doubled = createMemo(() => count() * 2); // ✅ derive, don't write back
 Escape hatch for genuinely internal state (not app state):
 `createSignal(null, { ownedWrite: true })`. Using `ownedWrite` to silence the
 error for application state is a misuse — derive instead.
+
+`untrack()` is **not** a write exemption. It suppresses dependency collection
+for reads, but preserves the current owner; a setter, `refresh()`, or action
+invocation inside `untrack(() => ...)` still trips the same owned-scope guard.
+Move the operation to an imperative phase/call site instead of wrapping it in
+`untrack`.
 
 ### Server rendering is setter-free
 
@@ -355,7 +362,7 @@ Every dev-mode diagnostic has a code. The ones you'll hit, with the fix:
 
 | Code | Severity | Fix |
 |---|---|---|
-| `REACTIVE_WRITE_IN_OWNED_SCOPE` | error | Move write to handler/action/`onSettled`; derive with memo; `ownedWrite` only for internal state |
+| `REACTIVE_WRITE_IN_OWNED_SCOPE` | error | Move write to handler/action/`onSettled`; derive with memo; `untrack` does not exempt writes and `ownedWrite` is only for internal state |
 | `ACTION_CALLED_IN_OWNED_SCOPE` | error | Define the action wherever appropriate, but invoke it from a handler/effect callback/`onSettled`, not a component body or computation |
 | `STRICT_READ_UNTRACKED` | warn | Read in JSX/memo/effect-compute, or wrap in `untrack` |
 | `PENDING_ASYNC_UNTRACKED_READ` | error | Read async values (including a derived store before its first resolution) in a tracked scope (JSX/memo/compute) |

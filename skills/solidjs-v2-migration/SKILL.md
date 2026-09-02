@@ -54,7 +54,8 @@ the decision to make:
    collections) + `<Loading>`; `.loading`/`.error`/`refetch`/`mutate` each map
    differently — see the table.
 5. **Mutations**: ad-hoc flag flipping / `startTransition` → `action()` +
-   optimistic primitives + `refresh()`.
+   optimistic primitives + awaitable `refresh()` or `until()` live-source
+   acknowledgement.
 6. **Stores**: `produce` wrappers → plain drafts; path setters → drafts (or
    `storePath` compat); `reconcile` moves inside the draft; `createMutable` →
    `createStore`.
@@ -65,7 +66,10 @@ the decision to make:
    camelCase attributes → lowercase.
 9. **Context**: `.Provider` → context-as-component; delete `useX`-with-throw
    wrappers (`useContext` now returns `T` and throws without Provider).
-10. **`from`/`observable`** → async iterables / push-out effects.
+10. **Server functions**: old `.GET`/`.withOptions` call sites → declaration
+   wrappers, `prepareRequest`, or per-call `invoke`; audit module-level versus
+   function-level wrapper trust boundaries.
+11. **`from`/`observable`** → async iterables / push-out effects.
 
 ## Pass 3 — run dev and fix diagnostics
 
@@ -75,7 +79,8 @@ real review. Typical wave, in order of volume:
 - `STRICT_READ_UNTRACKED` — top-level/destructured prop reads the old code
   tolerated. Move reads into JSX/memos, or `untrack` deliberate one-shots.
 - `REACTIVE_WRITE_IN_OWNED_SCOPE` (throws) — 1.x effects that write signals.
-  Rewrite as derivations or move writes to handlers/actions.
+  Rewrite as derivations or move writes to handlers/actions. `untrack()` is not
+  an exemption: it suppresses dependency tracking, not ownership.
 - `ASYNC_OUTSIDE_LOADING_BOUNDARY` — async reads with no `<Loading>` ancestor;
   add boundaries where fallback UI is wanted.
 - `CLEANUP_IN_FORBIDDEN_SCOPE` — `onCleanup` inside `onSettled`; return the

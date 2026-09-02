@@ -1,6 +1,7 @@
 # Async data, transitions, actions, optimistic UI
 
-Verified against solid-js@2.0.0-rc.3 (published typings) and `next@af6fee86` sources/tests.
+Verified against solid-js@2.0.0-rc.5 (published typings/runtime) and
+`solidjs/solid@5eb3250a` sources/tests.
 
 ## Async lives in computations — there is no `createResource`
 
@@ -178,21 +179,27 @@ currently pending.
   `<button disabled={isPending(user)}>Save</button>` under the boundary,
   with a disabled fallback for the initial path.
 
-**Same-question re-asks are silent; new questions pend monotonically.** A
+**Same-question re-asks are quiet; new questions pend monotonically.** A
 `refresh()`, a poll, or a confirming refetch after a mutation — none of which
-change the *tracked input* (id, query key) — reveal their fresh value without
-ever flipping `isPending` to `true`: the source you're showing still answers
+change the *tracked input* (id, query key) — normally reveal their fresh value
+without flipping `isPending` to `true`: the source you're showing still answers
 what's being asked, so the swap is quiet. A change to the tracked input
 itself (navigation changes `id()`) pends every read under that source
 monotonically until the new answer reveals — nothing can silence it early.
 To make an otherwise-quiet reload read as pending, declare it:
 `affects(user); refresh(user)` (see **`affects()`** below).
 
+Published rc.5 has one narrow runtime defect at this boundary: if a quiet
+refresh landing is held by another transition, a directly observing render
+effect can see a one-frame `isPending === true` pulse. The post-rc.5 upstream
+fix is not part of this target. Treat refresh as a quiet re-ask for UI design,
+but do not write correctness logic that depends on it *never* pulsing in rc.5.
+
 Optimistic writes are **verdict-inert**: an active override displays the
 provisional value but decrees nothing — it does not read pending on its own
 slot and does not mask anything else. A spinner driven by
 `isPending` next to an optimistic write now depends only on whether the
-confirming work is a quiet re-ask (`refresh()` alone → silent) or a declared
+confirming work is a quiet re-ask (`refresh()` alone → normally quiet) or a declared
 one (`affects()` + `refresh()` → pending) — not on the presence of the
 optimistic write. Drive "Saving…" process affordances from co-written data
 (a flag in the optimistic write, or a dedicated `createOptimistic` boolean),
@@ -235,7 +242,7 @@ Targets:
 - `affects(accessor)` — a plain signal/memo source accessor.
 
 The idiom for a "loud" reload — one that should read pending even though a
-bare `refresh()` alone would be silent:
+bare `refresh()` alone would normally be quiet:
 
 ```ts
 const reload = action(function* () {
@@ -264,7 +271,7 @@ co-written state — an optimistic flag that reverts on its own at settle —
 never a verdict read off `isPending`. See *Optimistic primitives* below for
 why optimistic writes themselves are verdict-inert.
 
-## `latest(fn)`, `resolve(fn)`, `refresh(target)`
+## `latest(fn)`, `resolve(fn)`, `refresh(target)`, `until(fn)`
 
 ```ts
 latest(userId); // peek at the in-flight value during a transition
@@ -275,15 +282,74 @@ await resolve(() => user()); // Promise that settles when the expression is
                 // source rejects. Imperative code / tests only — throws inside
                 // a tracking scope.
 
-refresh(user);  // invalidate-and-recompute a derived read. Target must be
-                // refreshable: an async memo, derived signal/store
-                // (function-form), or projection. It is an action: call from
-                // handlers/effects/actions — calling inside a pure
-                // computation throws (REACTIVE_WRITE_IN_OWNED_SCOPE).
+const settled = await refresh(user); // invalidate/recompute and wait for the
+                // next quiescent answer. Target must be refreshable: an async
+                // memo, derived signal/store (function-form), or projection.
+                // Calling inside a pure computation throws
+                // REACTIVE_WRITE_IN_OWNED_SCOPE.
 ```
+
+Published rc.5 makes refresh awaitable:
+
+```ts
+declare function refresh<T>(
+  target: Refreshable<T>
+): Promise<T extends (...args: any) => infer V ? V : T>;
+```
+
+The promise follows the re-ask through any superseding invalidation and settles
+at the next quiescent answer. For an accessor it resolves the settled value; for
+a store it resolves the node passed (refreshing a nested node still re-asks its
+whole derived family). It rejects with the re-ask error. Ignoring the returned
+promise remains valid fire-and-forget usage and does not create an unhandled
+rejection. Inside an action, `yield refresh(source)` waits at a transaction-safe
+point; failure throws at that yield and reverts optimistic writes. The delivered
+value is authoritative staged data, never the caller's optimistic override.
 
 `refresh()` recomputes only the explicit target (or the top-level reads of a
 refresh callback); it does not cascade into unrelated upstream memos.
+
+### `until()` — wait for a live source to acknowledge
+
+```ts
+interface UntilOptions {
+  timeout?: number;
+  signal?: AbortSignal;
+}
+
+const acknowledged = await until(
+  () => todos.find(todo => todo.clientId === clientId),
+  { timeout: 5_000, signal }
+);
+```
+
+`until(fn, options?)` returns `Promise<Truthy<T>>`: it resolves with the first
+truthy settled predicate result. Falsy and pending results keep waiting; a
+predicate error, abort, or timeout rejects (`TimeoutError` for timeout). Call it
+from imperative code, never inside a tracking scope.
+
+Its important action use is live-source acknowledgement:
+
+```ts
+const addTodo = action(async function* (todo: Todo) {
+  setOptimisticTodos(list => { list.push(todo); });
+  yield api.addTodo(todo);
+  yield until(
+    () => todos.some(row => row.id === todo.id),
+    { timeout: 5_000 }
+  );
+});
+```
+
+`yield until(...)` keeps the transaction and its optimistic writes alive until
+the authoritative subscription/store observes the mutation. The predicate
+does not see the action's own optimistic overlay, so an optimistic write cannot
+acknowledge itself; transition-staged authoritative data is visible. Use a
+timeout or abort signal for a live channel that can drop acknowledgements. If
+another transition supplies the truthy confirmation, rc.5 entangles it with
+the awaiting action so the confirming truth and optimistic reversion/reveal
+paint atomically rather than tearing; unrelated non-flipping updates remain
+free to reveal.
 
 ## Transitions are built-in
 
@@ -324,8 +390,9 @@ const save = action(async function* (todo) {
 ```
 
 Shape of a mutation: optimistic write → `yield`/`await` server work →
-`refresh(...)` derived reads. Don't use `refresh()` as a "refreshing" UI flag —
-that's `isPending`'s job.
+`refresh(...)` derived reads or `until(...)` live acknowledgement. Don't use
+`refresh()` as a "refreshing" UI flag: use a co-written process flag, or
+`affects()` + `isPending` when the data re-ask itself should read pending.
 
 **`yield` is the only transaction-safe suspension point** (changeset
 `document-action-await-contract`, ruled behaves-as-designed). Writes made

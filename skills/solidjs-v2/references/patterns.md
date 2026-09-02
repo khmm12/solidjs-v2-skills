@@ -1,6 +1,7 @@
 # Patterns: composing Solid 2.0 primitives
 
-Verified against solid-js@2.0.0-rc.3 (published typings) and `next@af6fee86` sources/tests.
+Verified against solid-js@2.0.0-rc.5 (published typings/runtime) and
+`solidjs/solid@5eb3250a` sources/tests.
 
 Field-tested compositions on top of the core APIs. Each pattern names the
 primitives it leans on; signatures are covered in the sibling reference files.
@@ -45,8 +46,8 @@ function createCachedQuery<K, T>(options: {
     () => {
       // isPending(state) covers the initial/key-changed run (a genuinely new
       // question pends monotonically until reveal). It does NOT cover the
-      // refresh() path below is a silent same-question re-ask, so refresh.status is
-      // the sole signal for "revalidating" once the key hasn't changed.
+      // refresh() path below: that is normally a quiet same-question re-ask,
+      // so refresh.status is the sole "revalidating" signal for a stable key.
       try { return isPending(state) || state().refresh.status === "refreshing"; }
       catch { return false; }             // tolerate not-ready on first read
     },
@@ -71,7 +72,7 @@ async function* streamQuery({ key, previous, signal, fetcher, cache }) {
     return value;
   });
   if (previous) {                          // refresh path: keep showing prev, swap when network lands
-    // Yield "refreshing" up front: a same-question refresh() does not flip
+    // Yield "refreshing" up front: a same-question refresh() is contractually quiet
     // isPending() on its own (see `pending` above), so this
     // explicit status is what "revalidating" actually reads off.
     yield { ...previous, key, refresh: { status: "refreshing" } };
@@ -131,9 +132,11 @@ const addTodo = action(function* (todo) {
 UI flags under the question-scoped pending model (`async-and-actions.md`
 → *`isPending` — question-scoped pending*, *Optimistic writes are
 verdict-inert*): a bare `refresh(todos)` is a **quiet, same-question re-ask**
-— it never flips `isPending` regardless of whether an optimistic write is
-live. The optimistic write itself is verdict-inert too: it decrees nothing
-and masks nothing. So don't
+— it normally does not flip `isPending` regardless of whether an optimistic
+write is live. Published rc.5 has the held-landing one-frame render-effect
+pulse documented in `async-and-actions.md`; that defect is not a process-state
+API. The optimistic write itself is verdict-inert too: it decrees nothing and
+masks nothing. So don't
 drive *this* mutation's "Saving…" spinner off `isPending(() => todos.length)`
 either way — co-write a flag into the row (`{ ...todo, pending: true }`) or
 use a separate `createOptimistic(false)`. If the reconcile *should* read as

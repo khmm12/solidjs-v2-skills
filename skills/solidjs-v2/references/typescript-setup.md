@@ -1,6 +1,7 @@
 # TypeScript, JSX, imports, project setup
 
-Verified against solid-js@2.0.0-rc.3 / @solidjs/web@2.0.0-rc.3 typings.
+Verified against solid-js@2.0.0-rc.5 / @solidjs/web@2.0.0-rc.5 published
+typings and `solidjs/solid@5eb3250a` sources.
 
 ## Import paths
 
@@ -22,6 +23,13 @@ compiler is `@solidjs/compiler`.
 `references/server-functions.md`), `./storage`, and `./serialization`
 subpaths for server-side concerns — not part of the renderer-neutral surface
 above.
+
+The published rc.5 `solid-js` export map no longer exposes `solid-js/types/*`.
+Import public types from `solid-js` itself; a deep import that happened to find
+generated declaration files in an earlier prerelease is unsupported and now
+fails package export resolution. `@solidjs/web/types/*` remains available for
+renderer integration declarations, but application code should prefer the
+documented root/subpath exports.
 
 ## tsconfig for web apps
 
@@ -69,7 +77,7 @@ type Ref<T> = T | RefCallback<T> | undefined | Ref<T>[];
 ```
 
 This is why `ref={[first, [second, third]]}` type-checks. Library code that has
-resolved refs to invoke should use the renderer's `applyRef` helper. Its rc.3
+resolved refs to invoke should use the renderer's `applyRef` helper. Its rc.5
 client typing is:
 
 ```ts
