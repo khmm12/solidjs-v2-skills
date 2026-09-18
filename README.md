@@ -8,44 +8,10 @@ React habits can look plausible and still be wrong. This repository gives
 agents a verified v2 reference for writing new code, migrating 1.x projects,
 and reviewing diffs.
 
-> Current target: `solid-js@2.0.0-rc.5`, `@solidjs/web@2.0.0-rc.5`,
-> `@solidjs/signals@2.0.0-rc.5`, and `@solidjs/diagnostics@2.0.0-rc.5`.
+> Current target: `solid-js@2.0.0-rc.8` and `@solidjs/web@2.0.0-rc.8`.
 
-## Measured effect
-
-![Luna Low pass rate: 5% base, 45% with routed content, 60% with the deployed skill](assets/eval-luna-rc3.svg)
-
-On the full 58-question rc.3 exam, Luna at low reasoning went from **5%**
-without the skill to **60%** with the deployed skill. It retrieved the right
-skill content in all 58 deployed cases.
-
-These are historical rc.3 results. The current rc.5 bank contains 70 questions,
-so the command below documents the original run rather than reproducing it from
-current `HEAD`.
-
-This is a single run, not a confidence interval. Terra at medium reasoning
-graded each answer against a fixed, source-backed rubric.
-
-<details>
-<summary>Axis breakdown and exact command</summary>
-
-| axis | base | content | deployed |
-|---|---:|---:|---:|
-| API | 3% | 47% | 60% |
-| patterns | 6% | 50% | 67% |
-| Solid vs React | 20% | 20% | 40% |
-| Solid 1.x vs 2.0 | 0% | 40% | 60% |
-
-`content` injects the skill and the one routed reference. `deployed` starts an
-isolated Codex agent and makes it retrieve those files itself.
-
-```sh
-node evals/run.mjs --provider codex --models gpt-5.6-luna --reasoning low \
-  --conditions base,content,deployed --grader-provider codex \
-  --grader gpt-5.6-terra --grader-reasoning medium --concurrency 4
-```
-
-</details>
+Luna low scored **3% without the skill → 51% with it** on 68 rc.8 questions
+across three runs, graded by Terra medium.
 
 ## What's included
 
@@ -53,7 +19,7 @@ node evals/run.mjs --provider codex --models gpt-5.6-luna --reasoning low \
 |---|---|
 | `solidjs-v2` | Writing and editing Solid 2.0 code. Covers reactivity, async data and actions, stores, control flow, DOM, server functions, experimental server components, and TypeScript. |
 | `solidjs-v2-migration` | Moving a Solid 1.x codebase or file to 2.0. Includes a four-pass workflow and a rename/removal map with recipes. |
-| `solidjs-v2-reviewer` | Reviewing Solid 2.0 diffs for React habits, 1.x APIs, and reactivity bugs. Includes greppable smell tables and concrete fixes. |
+| `solidjs-v2-reviewer` | Reviewing Solid 2.0 diffs for React habits, 1.x APIs, and reactivity bugs. Includes a concise behavior checklist and evidence-based findings. |
 
 The three skills share the same reference files across Codex, Claude Code, and
 `npx skills`; there are no host-specific copies to drift apart. Each skill
@@ -141,9 +107,10 @@ This is unnamespaced and updates immediately with `git pull`.
 
 The references are distilled from Solid's `documentation/solid-2.0/`
 (MIGRATION.md and RFC 01–12) and the official `packages/solid/CHEATSHEET.md` at
-`solidjs/solid@5eb3250a` (the published rc.5 tag commit). API claims are checked
-against the published rc.5 typings and runtime first, then the matching
-upstream sources and tests.
+[`solidjs/solid@f8b40b7e`](https://github.com/solidjs/solid/tree/f8b40b7e2049d67ceebe1d2e90a1029eb64e097d).
+The [upstream cheatsheet](https://github.com/solidjs/solid/blob/f8b40b7e2049d67ceebe1d2e90a1029eb64e097d/packages/solid/CHEATSHEET.md)
+is source material rather than a bundled duplicate. API claims use published rc.8
+typings first, then upstream sources and tests.
 
 Solid 2.0 is still a prerelease. Before teaching a new API, the maintenance
 workflow also checks pending upstream changesets. See [AGENTS.md](AGENTS.md)
@@ -151,19 +118,11 @@ for the full update procedure.
 
 ## Run the exam
 
-The dependency-free runner supports Claude and Codex answer models, separate
-answer and grader models, and three conditions: no skill, injected content,
-and deployed retrieval.
-
 ```sh
-node evals/run.mjs --quick
-node evals/run.mjs --provider codex --models gpt-5.6-luna --quick
+node evals/run.mjs --n 3    # three runs: Luna low, base vs with-skill
+node evals/run.mjs --quick  # four-question smoke test
 ```
 
-Codex runs use an ephemeral, auth-only `CODEX_HOME`, a read-only sandbox, and a
-neutral working directory. Tool use invalidates control cells instead of
-quietly contaminating the score. Results are written under the git-ignored
-`evals/results/` directory.
-
-See [evals/PLAN.md](evals/PLAN.md) for the rubric, condition semantics, and
-release-grade commands.
+Terra grades eight answers per call against a source-backed rubric. Answers and
+scores are saved in `evals/results/`; interrupted runs can resume.
+See [evals/PLAN.md](evals/PLAN.md) for options and methodology.

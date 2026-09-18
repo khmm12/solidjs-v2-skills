@@ -2,7 +2,8 @@
 
 This repo is a Claude Code and Codex plugin containing skills for SolidJS 2.0.
 The deliverable is **reference content** — correctness of API claims is the
-whole product. There is no build step and no tests; verification is editorial.
+whole product. There is no product build. Verify content with published typings, small runtime
+probes, and the skill exam.
 
 ## Structure
 
@@ -20,9 +21,6 @@ whole product. There is no build step and no tests; verification is editorial.
 - `skills/solidjs-v2/references/*.md` — topic distillations. Each starts with a
   version marker line ("Verified against …"). Keep them rule + canonical
   example + footgun; no RFC prose dumps.
-- `skills/solidjs-v2/references/cheatsheet.md` — **verbatim copy** of upstream
-  `packages/solid/CHEATSHEET.md` with an attribution header. Never edit its
-  body; refresh from upstream instead.
 
 ## Ground truth, in priority order
 
@@ -52,9 +50,8 @@ directory for its scheduled fate.
   just wrote.
 - Keep the three skills non-overlapping: `solidjs-v2` = write new code,
   `solidjs-v2-migration` = convert 1.x, `solidjs-v2-reviewer` = audit diffs.
-  Cross-reference instead of duplicating content; the migration map and the
-  reviewer tables intentionally repeat the rename list — keep those two in
-  sync when either changes.
+  Keep the v1 rename map in the migration skill. The reviewer checks target
+  behavior; verify agreement across all three skills after editing shared rules.
 - Every skill keeps its version-detection step (Solid major check) — these
   skills must refuse to apply v2 rules to 1.x projects.
 
@@ -66,32 +63,26 @@ reference content.
 
 - `questions.json` — the bank. Each question carries `must_include` (claims the
   answer must assert, **each traceable to a reference** via `source`) and `must_not`
-  (forbidden APIs / wrong-only regexes). `meta.note` is binding: never add a
+  (optional wrong-answer audit patterns). `meta.note` is binding: never add a
   `must_include` you cannot source — a wrong answer key silently inverts the eval.
   Encode semantic negatives as positive `must_include` claims; keep `must_not` for
-  patterns that appear **only** in wrong answers (verify the regex does not match the
-  correct phrasing). IDs are axis-prefixed: `A`=api, `B`=pattern, `C`=react (vs
+  optional audit hints whose matches need contextual review; grade semantic
+  correctness through `must_include`. IDs are axis-prefixed: `A`=api, `B`=pattern, `C`=react (vs
   React), `D`=v1 (vs 1.x).
-- `run.mjs` — dependency-free runner with Claude and Codex answer backends;
-  shells out to the selected CLI and LLM-grades each answer against the rubric
-  (the grader is told the rubric is the sole truth, not its own knowledge).
-  Three conditions: `base` (no skill — control), `content` (`SKILL.md` + the
-  one routed reference injected — content-quality diagnostic), `deployed`
-  (provider-specific plugin/skill retrieval — the product). Runs from a
-  neutral cwd so `base`/`content` can't read the references off disk and
-  contaminate the control.
-- `results/` is git-ignored.
-- Run: `node evals/run.mjs --quick` (Claude smoke), or
-  `node evals/run.mjs --provider codex --quick` (Codex smoke). Scope with
-  `--questions A5,B5,B6 --conditions content,deployed`. It needs the selected
-  answer-provider CLI plus the Claude grader unless `--no-grade` is used, and
-  spends tokens — run it manually, not in CI.
+- `run.mjs` compares `base` (prior knowledge) with `with-skill` (tool retrieval).
+  Default: Codex Luna/low answers, Terra/medium grades batches of eight answers
+  against the sourced rubric. Each answer runs in an isolated session.
+- Run `node evals/run.test.mjs` for offline runner checks; `node evals/run.mjs`
+  for the full exam. Use `--quick` or `--questions A5,B5,B6` for focused runs.
+- `results/` is git-ignored. Answers and grades are checkpointed after each call;
+  resume an interrupted run with the same flags plus `--resume <run.json>`.
+  See [evals/PLAN.md](evals/PLAN.md) for isolation, scoring, and batch-size controls.
 
 ## When the Solid prerelease advances
 
-1. Refresh `references/cheatsheet.md` from upstream
-   `packages/solid/CHEATSHEET.md`; update the attribution header (commit SHA +
-   package version).
+1. Resolve the newest published v2 version from npm (including prereleases)
+   and anchor its exact `gitHead`. Compare the upstream cheatsheet as evidence;
+   keep teaching content in maintained topic references.
 2. Diff upstream `documentation/solid-2.0/` and `.changeset/` since the last
    anchored commit; fold API changes into the affected reference files.
 3. Re-verify drift-prone claims against the new published typings (removed
@@ -101,3 +92,25 @@ reference content.
 5. Re-run `evals/` and fix any question whose answer key moved — a removed or
    renamed API shifts the rubric, so update `must_include`/`source` rather than
    leaving a stale (silently inverted) answer key.
+
+## Writing rules
+
+- Teach the current verified v2 contract. Keep v1-to-v2 conversion in the migration
+  map; omit beta-to-RC history and prerelease changelogs from skills.
+- State the action to take, followed by its reason or concrete limitation.
+  Prefer correct examples; keep old names only where migration/review needs them.
+- Write for a capable agent with low reasoning: explicit imports, callback shapes,
+  ownership, and completion criteria; explain a necessary term at first use.
+- Keep SKILL.md to purpose, version gate, essential model, task routing, and checks.
+  Keep each reference to one topic, with rules and small canonical examples.
+  Prune repeated explanations and copied manuals instead of adding summaries.
+- Teach Solid's setup-once/tracked-read model separately from React, and v2's
+  batching/split effects/async model separately from v1. Preserve facts shared by
+  both Solid majors (for example JSX getter props and v1 For's raw item).
+- Keep each detailed rule in one reference. Links inside an installed skill stay
+  in that folder; companion-skill pointers include a standalone fallback.
+- Every new rule/footgun gets a source-backed eval. Update existing answer keys
+  when behavior changes; remove regex negatives that match correct explanations.
+- Compile changed examples against the target packages. Probe disputed runtime
+  semantics in an isolated temporary project; report checks separately from
+  model-eval results. Use focused Luna/low base+with-skill runs to check clarity.

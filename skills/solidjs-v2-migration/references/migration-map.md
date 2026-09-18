@@ -1,304 +1,156 @@
-# Solid 1.x → 2.0 migration map
+# Solid 1.x to 2.0 migration map
 
-Full rename/removal table with before/after recipes. Source: official
-MIGRATION.md + RFCs at `solidjs/solid@5eb3250a`, verified against published
-solid-js@2.0.0-rc.5 typings/runtime.
+Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
 
-## Import paths (mechanical)
+## Imports and renames
 
-| 1.x | 2.0 |
+| 1.x | v2 target |
 |---|---|
 | `solid-js/web` | `@solidjs/web` |
 | `solid-js/store` | `solid-js` |
-| `solid-js/h` | `@solidjs/h` |
-| `solid-js/html` | `@solidjs/html` |
-| `solid-js/universal` | `@solidjs/universal` |
-| `solid-js/jsx-runtime` | `@solidjs/web/jsx-runtime` |
-| tsconfig `"jsxImportSource": "solid-js"` | `"@solidjs/web"` |
-| `import type { JSX } from "solid-js"` | `from "@solidjs/web"`; renderer-neutral `JSX.Element` → `Element` from `solid-js` |
-
-## Pure renames (mechanical)
-
-| 1.x | 2.0 |
-|---|---|
-| `Suspense` | `Loading` |
-| `SuspenseList` | `Reveal` (`revealOrder="forwards"` → default `order="sequential"`; `"together"` → `order="together"`; `tail="collapsed"` → `collapsed`) |
-| `ErrorBoundary` | `Errored` (fallback `err` becomes an **accessor**: `err().message`) |
-| `mergeProps` | `merge` (⚠ `undefined` now overrides, not "skip") |
-| `splitProps(p, ["a"])` → `[local, rest]` | `omit(p, "a")` → rest only; read locals via `p.a` |
-| `unwrap` | `snapshot` |
-| `onMount` | `onSettled` (may return cleanup **in an owned scope only** — out-of-band fires (event handler/tracked effect) make a returned cleanup a dev error, `SETTLED_CLEANUP_UNOWNED`; leaf owner — no primitives/`onCleanup` inside) |
-| `equalFn` | `isEqual` |
-| `getListener` | `getObserver` |
-| `Context.Provider` | the context itself: `<Ctx value={...}>` |
-| `classList={{...}}` | `class={{...}}` / `class={[...]}` |
+| `solid-js/h`, `/html`, `/universal` | `@solidjs/h`, `@solidjs/html`, `@solidjs/universal` |
+| `solid-js/jsx-runtime`, JSX import source | `@solidjs/web/jsx-runtime`, `jsxImportSource: "@solidjs/web"` |
+| `JSX` from `solid-js` | `JSX` from `@solidjs/web`; neutral renderables use `Element` from `solid-js` |
+| `babel-preset-solid` | `@solidjs/babel-plugin`; Vite integration: `@solidjs/vite-plugin` |
+| `Suspense`, `SuspenseList`, `ErrorBoundary` | `Loading`, `Reveal`, `Errored` |
+| `mergeProps`, `splitProps`, `unwrap` | `merge`, `omit` (rest-only), `snapshot` |
+| `onMount` | `onSettled` |
+| `equalFn`, `getListener` | `isEqual`, `getObserver` |
+| `Context.Provider` | `<Context value={...}>` |
+| `classList` | `class` object/array |
 | `createSelector` | `createProjection` |
-| `createDynamic(src, props)` | `dynamic(src)` factory (`<Dynamic>` JSX wrapper unchanged) |
-| `indexArray` | `mapArray` with non-keyed mode |
+| `createDynamic(source, props)` | `dynamic(source)` component factory |
+| `Index`, `indexArray` | `For keyed={false}`, non-keyed `mapArray` |
 
-## Semantic rewrites (judgement per call site)
+Rename caveats: `Errored` fallback gets an accessor (`error()`); `merge` treats
+undefined as an overriding value; `omit(props, "local")` returns only the rest.
+`Reveal` uses `order="sequential"` (default), `"together"`, or `"natural"`, with
+`collapsed` for hiding later sequential fallbacks.
 
-### `batch(fn)` → nothing (or `flush()`)
+## Effects and state
 
-Batching is the default. Delete the wrapper. Only if code *reads its own
-writes* synchronously right after, add `flush()` at that point.
+Use the intent of each v1 `createComputed`/write-back effect:
+
+| Intent | v2 |
+|---|---|
+| Readonly derivation | `createMemo(() => compute())` |
+| Writable prop-derived state | `createSignal(() => props.initial)` |
+| Side effect | `createEffect(compute, apply)` |
+| Read DOM geometry and update layout | `createRenderEffect(compute, apply)` |
 
 ```ts
-batch(() => { setA(1); setB(2); });   // 1.x
-setA(1); setB(2);                     // 2.0; add flush() only if needed now
-```
-
-### `createEffect(fn)` → split form
-
-```ts
-// 1.x
-createEffect(() => { el().title = name(); });
-// 2.0 — compute reads, apply does side effects
-createEffect(() => name(), value => { el().title = value; });
-
-// 1.x initialValue:    createEffect(prev => count(), 0)
-// 2.0:                 createEffect((prev = 0) => count(), (v, prev) => ...)
-
-// 1.x cleanup via onCleanup inside → 2.0 return cleanup from apply
 createEffect(
-  () => name(),
-  value => {
-    const id = setInterval(() => log(value), 1000);
-    return () => clearInterval(id);
-  }
+  () => ({ node: el(), title: name() }),
+  ({ node, title }) => { node.title = title; }
 );
 ```
 
-`createMemo(fn, initial)` → `createMemo(fn)` (second arg is options now).
+Move `on(deps, ...)` dependencies into compute; use `{ defer: true }` for deferred
+initial apply. Replace initial-value arguments with default parameters for
+`prev`; the second memo argument is options. Extract reactive fields in compute;
+apply is untracked. Return teardown from apply.
 
-### `on(deps, fn, { defer })` → split effect
+Call setters/actions from handlers, effect apply/error callbacks, or `onSettled`.
+Owned computation/setup scopes derive state; writes/action calls there throw
+in dev. `untrack` preserves the owner, so the write guard still applies.
 
-```ts
-createEffect(on(count, (v, prev) => log(v, prev)));            // 1.x
-createEffect(() => count(), (v, prev) => log(v, prev));        // 2.0
+Batching is automatic. Remove `batch` wrappers and use `flush()` only when an
+imperative next-line read needs committed state or updated DOM. Both effect lanes
+run before paint, with the render lane before the user lane.
 
-createEffect(on([a, b], ([a, b]) => log(a, b)));               // 1.x
-createEffect(() => [a(), b()], ([a, b]) => log(a, b));         // 2.0
-
-createEffect(on(count, fn, { defer: true }));                  // 1.x
-createEffect(count, fn, { defer: true });                      // 2.0 — defer is built in
-```
-
-### `createComputed` → by intent
-
-| Intent | 2.0 |
-|---|---|
-| Readonly derivation (write-back into a signal) | `createMemo` |
-| Side effect on change | split `createEffect` |
-| Derived value that also has a setter | `createSignal(() => ...)` (writable memo) |
-
-```ts
-// 1.x derived-with-writeback
-const [v, setV] = createSignal(props.initial);
-createComputed(() => setV(props.initial));
-// 2.0
-const [v, setV] = createSignal(() => props.initial);
-```
-
-### `createResource` → async computation + `Loading`
-
-```ts
-const [user] = createResource(id, fetchUser);                  // 1.x
-const user = createMemo(() => fetchUser(id()));                // 2.0
-```
-
-| Resource feature | 2.0 |
-|---|---|
-| `user.loading` | `<Loading>` boundary (initial render) + `isPending(() => user())` (revalidation) — a bare `refresh(user)` is normally a **quiet** same-question re-ask; for a "loud" refetch declare it: `affects(user); refresh(user)`. For a "saving…" affordance during a mutation, use a co-written optimistic flag, not `isPending` (see `solidjs-v2` skill, async-and-actions.md → `isPending`/`affects()`) |
-| `user.error` + inline `<Show when={user.error}>` | `<Errored>` boundary (single error path) or effect `error` option |
-| `refetch()` | `refresh(user)` (from handlers/actions, not computations) — returns a Promise for the next quiescent value, so `await refresh(user)` replaces code that awaited refetch completion; ignored/fire-and-forget remains valid. It is normally quiet unless paired with `affects()` |
-| `mutate(fn)` | `createOptimisticStore` + `action` (see below) |
-
-Collections: prefer `createProjection(async () => api.list(), [], { key: "id" })`
-or `createStore(fn, seed)` for keyed reconciliation.
-
-### Mutation flows → `action` + optimistic
-
-```ts
-// 1.x: mutate + manual refetch, race-prone
-mutate(prev => [...prev, todo]);
-await saveTodo(todo);
-refetch();
-
-// 2.0
-const [todos, setOptimistic] = createOptimisticStore(() => api.getTodos(), []);
-const addTodo = action(function* (todo) {
-  setOptimistic(s => { s.push(todo); });
-  yield api.addTodo(todo);
-  yield refresh(todos); // optional await point: rejects here and reverts on failure
-});
-```
-
-For a mutation confirmed by a live subscription rather than a refetch, use
-`yield until(() => liveTodos.some(row => row.id === todo.id), { timeout })`.
-The predicate reads authoritative data rather than the action's own optimistic
-overlay, so the optimistic row cannot acknowledge itself. Always bound a
-drop-prone live channel with timeout/abort.
-
-Define actions during component setup if convenient, but invoke them only from
-event handlers, effect callbacks, `onSettled`, or another imperative scope.
-Calling an action directly in a component body or computation throws in dev
-(`ACTION_CALLED_IN_OWNED_SCOPE`) and can livelock the tracked scope.
-
-`startTransition`/`useTransition` → delete; transitions are built-in. Pending
-UI: `isPending` / `<Loading on={...}>` — but `isPending` is question-scoped:
-a bare `refresh()` after a mutation is normally a quiet same-question re-ask,
-and an optimistic write is verdict-inert (it doesn't mask or decree anything).
-So drive *this* mutation's
-"Saving…" state from a co-written flag in the data, not from `isPending`; if
-you want the reload itself to read as pending, declare it with
-`affects(target)` before the `refresh()` (see `solidjs-v2` skill,
-async-and-actions.md → `isPending` / `affects()` / Optimistic primitives).
-
-Published rc.5 has one held-transition edge where a directly observing render
-effect can see a one-frame pending pulse during a quiet refresh; the fix is
-post-rc.5. Do not migrate correctness logic to depend on refresh *never*
-pulsing — use explicit process state for that logic.
-
-### Server-function prerelease call sites
-
-Delete old reference properties such as `fn.GET` and `fn.withOptions(...)`.
-Declaration-static behavior is `GET(fn)` / `withMeta(fn, meta)`, session-wide
-dynamic headers belong in `prepareRequest`, and per-call
-`{ signal, keepalive, priority }` belongs in `invoke(fn, options, ...args)`.
-Server-function forms use the reference's bare `.url`; application calls use
-the callable, whose transport targets the separate `/data/` address.
-
-When consolidating functions into a module-level `"use server"` file, rc.5
-registers each evaluated terminal export. A wrapper around that export runs for
-HTTP and direct SSR and stays server-only, but every export must evaluate to a
-function. With a function-level directive, validation still belongs inside the
-function body; an outer wrapper only sees the lowered reference.
-
-### `onError` / `catchError` → structural
-
-UI-level: `<Errored fallback={(err, reset) => ...}>` (note `err()` accessor).
-Programmatic: `createEffect(compute, { effect, error: (err, cleanup) => ... })` —
-the handler is queued with the effect phase, may write signals, and receives the
-original error (semantics: `solidjs-v2` skill, reactivity.md → Split effects).
-`resetErrorBoundaries` → delete (boundaries heal; `reset` arg for manual retry).
-
-### Stores: `produce` / paths / `createMutable`
-
-```ts
-setStore(produce(s => { s.x = 1; }));         // 1.x → drop produce, draft is default
-setStore(s => { s.x = 1; });
-
-setStore("user", "name", "Alice");            // 1.x path setter
-setStore(s => { s.user.name = "Alice"; });    // 2.0 preferred
-setStore(storePath("user", "name", "Alice")); // or compat helper (also ranges, storePath.DELETE)
-
-setStore("todos", reconcile(server));         // 1.x
-setStore(s => { reconcile(server)(s.todos); }); // 2.0 — omitted key still defaults to "id"
-
-const m = createMutable({ n: 0 }); m.n++;     // 1.x
-const [m, setM] = createStore({ n: 0 }); setM(s => { s.n++; }); // 2.0
-```
-
-The 1.x second argument was an options object; the 2.0 second argument is the
-key itself:
-
-| 1.x | 2.0 |
-|---|---|
-| `reconcile(server)` | `reconcile(server)` — omitted key defaults to `"id"` |
-| `reconcile(server, { key: "uuid" })` | `reconcile(server, "uuid")` |
-| `reconcile(server, { key: row => row.uuid })` | `reconcile(server, row => row.uuid)` |
-| `reconcile(server, { key: null })` | `reconcile(server, null)` — fully positional |
-
-There is no 2.0 `{ merge }` option to carry over; audit those call sites rather
-than passing the old object. In keyed mode, rows without the selected key still
-fall back positionally. Array/object shape mismatches replace the nested slot.
-Standalone `reconcile` remains strict when the caller targets a different
-root entity; do not treat it like a projection's authoritative returned-root
-swap.
-
-### `<Index>` → `<For keyed={false}>`
-
-```jsx
-<Index each={items()}>{(item, i) => <Row item={item()} index={i} />}</Index>
-<For each={items()} keyed={false}>{(item, i) => <Row item={item()} index={i} />}</For>
-```
-
-Same callback shape (item accessor, plain index). ⚠ Default keyed `<For>`
-changed too: `(rawItem, indexAccessor)` — when migrating a 1.x `<For>`, the
-item is no longer wrapped, but verify index usage (`i()`).
-
-### `use:` directives → ref factories
-
-```jsx
-<input use:autofocus />                          →  <input ref={autofocus} />
-<button use:tooltip={{ content: "Save" }} />     →  <button ref={tooltip({ content: "Save" })} />
-// compose: ref={[autofocus, tooltip(opts)]}
-```
-
-Delete the `declare module ... Directives` TS boilerplate. Rewrite directive
-implementations to the two-phase factory (owned setup returning an unowned
-apply callback) — see the main solidjs-v2 skill references.
-
-### DOM namespaces and markers
-
-| 1.x | 2.0 |
-|---|---|
-| `on:click={h}` / `oncapture:` | `onClick={h}`; native options via ref: `ref={el => el.addEventListener("click", h, { capture: true })}` |
-| `attr:x` / `bool:x` / `class:x` / `style:x` | plain attributes; `class`/`style` object forms |
-| `/*@once*/ expr` | keep it reactive; DOM initial state → `defaultValue`/platform default; deliberate one-shot → `untrack` in JS |
-| camelCase attributes (`tabIndex`) | lowercase (`tabindex`); handlers stay camelCase |
-| `clearDelegatedEvents()` | delete; dispose the render root |
-
-### `from` / `observable`
-
-```ts
-const sig = from(obs$);                       // 1.x external → Solid
-const sig = createMemo(async function* () {   // 2.0: async iterables are first-class
-  for await (const v of obs$) yield v;
-});
-
-const obs$ = observable(sig);                 // 1.x Solid → external
-createEffect(sig, v => externalLib.update(v)); // 2.0: push outward via effect
-```
-
-⚠ A hot/infinite source (socket, event stream) needs `onCleanup(() => unsubscribe())`
-**before** the `await` — Solid's dispose-time `.return()` can't unwind a generator
-parked on `await`, so `for await`/`try-finally` won't clean up on their own. Full
-pattern: `solidjs-v2` → `patterns.md` (*Streaming a socket*).
-
-### Context
+## Async resources and mutations
 
 ```tsx
-<Theme.Provider value="dark">…                →  <Theme value="dark">…
+const user = createMemo(() => fetchUser(id()));
+<Loading fallback={<Spinner />}><Profile user={user()} /></Loading>
 ```
 
-`useContext` on a default-less context returns `T` (throws
-`ContextNotFoundError` without Provider) — **delete `useX`-with-throw wrapper
-hooks**; call `useContext` directly. If code relied on `undefined`, add an
-explicit default or try/catch.
-
-### Removed with no direct replacement
-
-| Removed | Note |
+| v1 resource feature | v2 |
 |---|---|
-| `createDeferred` | handle debouncing outside Solid |
-| `enableScheduling` | gone |
-| `writeSignal` | internal; was never meant to be public |
-| `observable()` convenience | build a thin adapter over `createEffect`; expected to land in solid-primitives |
+| `createResource` | Async memo, derived store, or projection |
+| `.loading` | `Loading` for initial readiness; `isPending` for unrevealed changes |
+| `.error`, `onError`, `catchError` | `Errored` or effect `{ effect, error }` |
+| `refetch` | `refresh(source)`; await/yield its settled result when sequencing |
+| `mutate`, mutation transitions | `action` with optimistic primitives |
 
-## Behavioral changes that need an audit (no grep pattern)
+Bare refresh is quiet. Put `affects(source); yield refresh(source)` inside an
+action to make that reload pending. A saving process indicator reads a separate
+optimistic flag, rather than the readiness of the data.
 
-- **Reads after writes**: any code that sets a signal then immediately reads
-  it (or the DOM) in the same tick now sees the old value — insert `flush()`
-  or restructure. Tests are the most common casualty.
-- **`merge`/setters treat `undefined` as a value** — it overrides. Audit
-  `mergeProps` call sites passing optional objects.
-- **`createRoot` is owned by its parent** — roots that relied on living
-  forever need `runWithOwner(null, ...)`.
-- **Strict reads**: top-level `props.x` captures and destructuring warn
-  everywhere — expect a wave of `STRICT_READ_UNTRACKED` on first dev run.
-- **Writes in scope throw**: 1.x "effect that sets a signal" patterns crash —
-  rewrite as derivations or move writes to handlers.
-- **Action calls in scope throw**: move action invocation out of component
-  bodies/computations and into handlers, effect callbacks, or `onSettled`.
+```ts
+const [todos, setTodos] = createOptimisticStore<Todo[]>(() => api.list(), []);
+const add = action(async function* (todo: Todo) {
+  setTodos(rows => { rows.push(todo); });
+  const result = await api.save(todo);
+  yield; // regain transaction context before writes/refresh
+  yield refresh(todos);
+  return result;
+});
+```
+
+`yield` preserves transaction sequencing; optimism reverts at completion/failure.
+Live-channel confirmations can hold the action with `yield until(predicate,
+{ timeout })`, reading authoritative data rather than its optimistic overlay.
+
+## Stores
+
+Use `createStore` with draft setters for `createMutable`/`modifyMutable` and
+`produce` wrappers. New setter code mutates a draft; `storePath` is available
+for retained path-style migrations.
+
+```ts
+setStore(draft => { draft.user.name = "Ada"; });
+setStore(draft => { reconcile(serverTodos, "id")(draft.todos); });
+```
+
+`reconcile(value, key?)` accepts a string/extractor/null. Omission defaults to
+`"id"`; null means positional, and missing keys fall back to position. Nested
+array/object shape changes replace the slot. Standalone reconcile throws on a
+different keyed root entity; derived returns can swap the authoritative root.
+Setter return values shallow-replace; keyed merge belongs to reconcile/derivation.
+Shallow stores notify on root slot replacement; treat nested records as immutable.
+
+## Lists, props, lifecycle, DOM
+
+| `For` keying | Item | Index |
+|---|---|---|
+| identity/default | value | accessor |
+| `false` | accessor | number |
+| key function | accessor | accessor |
+
+Solid 1.x default `For` already supplied a raw item; preserve it and read `i()`.
+Read item/index accessors inside JSX/compute, since callback bodies are setup.
+Keep props on the props object and read `props.x` in tracked scopes. JSX value
+props (`value={count()}`) remain reactive through getters in both versions.
+
+Call `onSettled` setup from a component body and return cleanup. Leaf callbacks
+use pre-created primitives; `onCleanup` inside them throws. Out-of-band
+`onSettled` supports one-shot work; returned teardown throws in dev and is dropped
+in production. Async compute cleanup uses synchronous `onCleanup` before await/yield.
+
+Use callback refs/ref factories for `use:` directives. Compose callbacks in
+arrays. Use ordinary HTML attributes and `class`/`style` objects for namespaced
+attributes, camelCase handlers for events, and ref listeners for native options.
+Use lowercase `tabindex`/`readonly`; initial form values use platform defaults.
+Put reactive handler selection inside the callback. Dispose the render root to
+remove delegated listeners (`clearDelegatedEvents` has no replacement call).
+
+`useContext` on a default-less context returns `T` and throws if missing; call it
+directly when a wrapper only repeats that check. Supply an explicit default for
+optional contexts. Parent disposal disposes child roots; detach intentionally
+through `runWithOwner(null, ...)` when needed.
+
+## APIs without a direct replacement
+
+`createDeferred` needs application-level debouncing. `enableScheduling` and the
+internal `writeSignal` have no public equivalent. Replace `from` with an async
+iterable memo and `observable` with an adapter driven by a split effect. Hot
+streams need synchronous cleanup that cancels/unblocks the external source;
+iterator `.return()` alone queues behind a parked await.
+
+## Completion
+
+Typecheck, flush before test assertions, and create reactive test graphs in a
+root. Exercise loading, error/retry, optimistic rollback, list identity, and
+cleanup for affected features. Dev diagnostics identify frozen reads, owned
+writes, pending reads outside tracking, and leaf-scope cleanup mistakes.

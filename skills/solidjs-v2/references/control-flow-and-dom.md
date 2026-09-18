@@ -1,145 +1,94 @@
 # Control flow and DOM
 
-Verified against solid-js@2.0.0-rc.5 / @solidjs/web@2.0.0-rc.5 published
-typings/runtime and `solidjs/solid@5eb3250a` sources/tests.
-Control-flow components live in `solid-js`; `render`/`hydrate`/`Portal`/
-`Dynamic`/`dynamic` live in `@solidjs/web`.
+Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
 
-## `For` — one list primitive, three keying modes
+Control-flow components come from `solid-js`; `render`, `hydrate`, `Portal`,
+`dynamic`, and `Dynamic` come from `@solidjs/web`.
 
-The callback shape follows the keying mode. **Memorize this table** — it's the
-top list-rendering bug source:
+## Lists
 
-| Mode | `item` | `index` |
+| `For` mode | Item | Index |
 |---|---|---|
-| default / `keyed={true}` (identity) | raw value | `Accessor<number>` |
-| `keyed={false}` (replaces `<Index>`) | `Accessor<T>` | plain `number` |
-| `keyed={t => t.id}` (custom key) | `Accessor<T>` | `Accessor<number>` |
+| default / `keyed={true}` (identity) | raw value | accessor |
+| `keyed={false}` (position) | accessor | number |
+| `keyed={row => row.id}` (custom key) | accessor | accessor |
 
-```jsx
-<For each={todos()}>{(todo, i) => <Row todo={todo} index={i()} />}</For>
-<For each={todos()} keyed={false}>{(todo, i) => <Row todo={todo()} index={i} />}</For>
-<For each={todos()} keyed={t => t.id} fallback={<Empty />}>{todo => <Row todo={todo()} />}</For>
+```tsx
+<For each={rows}>{(row, i) => <Row row={row} index={i()} />}</For>
+<For each={rows} keyed={false}>{(row, i) => <Row row={row()} index={i} />}</For>
+<For each={rows} keyed={row => row.id}>{row => <Row row={row()} />}</For>
 ```
 
-Use literal `keyed` values with function children — a dynamic boolean makes the
-callback shape ambiguous. `<Index>` and `indexArray` are gone (`mapArray`
-handles non-keyed).
+Use a literal boolean or key function so the callback type stays definite.
+Read accessors in JSX/memos/effect compute: the callback body is an owned setup
+scope, and a top-level capture freezes the value. List identity comes from
+`For`'s keying mode, rather than React's per-element `key` prop.
 
-## `Repeat` — count/range rendering, no diffing
+`Repeat` renders stable numeric slots without array diffing:
 
-```jsx
+```tsx
 <Repeat count={store.items.length} from={start()} fallback={<Empty />}>
   {i => <Row name={store.items[i].name} />}
 </Repeat>
 ```
 
-`i` is a **plain number** — a stable slot key. Designed for store-backed lists
-(reactivity comes from store reads, not the index), skeletons, windowing.
+Its index is a plain number; store field reads supply reactivity.
 
-## `Show` / `Switch` / `Match`
+## Conditional branches and boundaries
 
-Non-keyed function children receive a narrowed **accessor**; `keyed` children
-receive the raw narrowed value (identity switches the branch):
-
-```jsx
+```tsx
 <Show when={user()} fallback={<Login />}>{u => <Profile user={u()} />}</Show>
 <Show when={user()} keyed>{u => <Profile user={u} />}</Show>
-
-<Switch fallback={<NotFound />}>
-  <Match when={route() === "home"}><Home /></Match>
+<Switch fallback={<Missing />}>
   <Match when={detail()} keyed>{d => <Detail data={d} />}</Match>
 </Switch>
 ```
 
-Don't compute values in the callback body (structure-building, untracked —
-warns); read through JSX expressions: `{u => <span>{u().name}</span>}`.
+`Show`/`Match` function children receive a narrowed accessor by default, or the
+raw narrowed value in keyed mode. Read through JSX/compute, as with lists.
+`Loading` owns initial readiness; `Errored` owns errors with `(errorAccessor,
+reset)` fallback. Read [async and actions](async-and-actions.md) for pending rules.
 
-## `Loading` / `Errored` (replace `Suspense` / `ErrorBoundary`)
+### Reveal
 
-```jsx
-<Loading fallback={<Spinner />} on={id()}>   {/* on: re-show fallback when id changes while pending */}
-  <Profile />
-</Loading>
+`Reveal` coordinates its direct boundary slots:
 
-<Errored fallback={(err, reset) => <button onClick={reset}>retry {String(err())}</button>}>
-  <Page />
-</Errored>
+- `order="sequential"` (default): DOM order; `collapsed` hides later fallbacks.
+- `order="together"`: release the group together.
+- `order="natural"`: children settle independently.
+
+Each `Loading`/`Errored` boundary severs ancestor coordination for its subtree.
+Nested boundaries stay local; content streamed into a held slot queues until
+that slot is released. A nested `Reveal` is one composite slot in a sequential/
+together parent, then follows its own order. A natural parent activates nested
+composites immediately. SSR `together`/`collapsed` use `renderToStream`;
+synchronous `renderToString` supports natural and uncollapsed sequential.
+
+## Dynamic and lazy components
+
+```tsx
+const Active = dynamic(() => editing() ? Editor : Viewer);
+<Active value={value()} />
+// Inline equivalent:
+<Dynamic component={editing() ? Editor : Viewer} value={value()} />
 ```
 
-`err` is an accessor; `reset` is an action to retry the branch. Boundaries heal
-automatically. Semantics details: `references/async-and-actions.md`.
+The factory returns a stable component, shares source evaluation across instances,
+and accepts async component sources. Imperative construction uses
+`createComponent(dynamic(source), props)`.
 
-## `Reveal` (replaces `SuspenseList`)
+### SSR shell timing
 
-Coordinates sibling `Loading` boundaries.
+- Pending `dynamic()` under `Loading` emits the boundary fallback in the shell;
+  its resolved component streams later.
+- `dynamic(source, { deferStream: true })` holds the first shell until its source
+  settles. The client ignores that option.
+- A pending `lazy()` module always holds an open shell: its code must run to
+  discover more async work. Async data found by that code still belongs to its
+  nearest boundary. A lazy mounted after shell flush streams normally.
+- An unbounded pending root hole holds the shell until content can render inline.
 
-- `order`: `"sequential"` (default; reveal in DOM order) | `"together"` (whole
-  group at once) | `"natural"` (each boundary reveals on its own data, no
-  frontier — meaningful nested: marks the subtree as one slot to the parent,
-  while its own children don't coordinate with each other).
-- `collapsed` (boolean, sequential-only): boundaries past the frontier render
-  nothing instead of their fallback.
-- **Membership is direct-children-only.** Each boundary (`<Loading>` or
-  `<Errored>`) severs reveal coordination for its subtree: a `<Loading>`
-  nested inside another slot's content, or wrapped in an `<Errored>`, never
-  joins the ancestor group and never delays its release — it resolves on its
-  own schedule inside the (possibly held) slot. While that slot is still
-  held, content the severed boundary streams is queued and applied the moment
-  the slot goes live.
-- Nesting: a nested `<Reveal>` is one composite slot to a `sequential` or
-  `together` parent — held (no opt-out) until the parent's ordering releases
-  it, then it runs its own order locally. A `natural` parent does **not**
-  hold nested composites: they activate immediately and run their own order
-  from the start.
-- SSR: `order="together"` and `collapsed` need `renderToStream`; plain
-  `renderToString` supports
-  `sequential` (uncollapsed) and `natural`.
-
-```jsx
-<Reveal>
-  <Loading fallback={<Skeleton />}><Header /></Loading>
-  <Reveal order="natural">  {/* held under this sequential parent until Header reveals; then each card on its own data */}
-    <Loading fallback={<CardSkel />}><Card id={1} /></Loading>
-    <Loading fallback={<CardSkel />}><Card id={2} /></Loading>
-  </Reveal>
-  <Loading fallback={<Skeleton />}><Footer /></Loading>
-</Reveal>
-```
-
-## Dynamic components
-
-```jsx
-import { dynamic, Dynamic } from "@solidjs/web";
-
-// Factory (canonical): stable Component identity; source may be async
-// (composes with <Loading> via the normal NotReadyError flow)
-const Active = dynamic(() => (isEditing() ? Editor : Viewer));
-return <Active value={value()} />;
-
-// JSX wrapper for inline sources — unchanged from 1.x at the call site
-<Dynamic component={isEditing() ? Editor : Viewer} value={value()} />
-```
-
-`createDynamic(source, props)` is gone — use `<Dynamic>` or
-`createComponent(dynamic(source), props)`. One `dynamic(...)` source is shared
-across all mounted instances.
-
-### SSR: pending dynamic/lazy components and the first shell
-
-In streaming SSR, a pending `dynamic()` or `lazy()` component inside `<Loading>`
-no longer gates the first shell: the boundary fallback is emitted in the shell and
-the resolved component streams later. Without a boundary, the same pending
-component is a root hole; that hole still gates the first shell, which waits and
-emits the resolved component inline rather than sending an empty shell first.
-
-### `lazy()` in SSR and hydration
-
-`lazy(loader, options?, moduleUrl?)` lives in `solid-js`. `options.export`
-selects a named module export; it must be a call-site literal so hydration can
-resolve the same component synchronously. The optional callsite module
-specifier (third argument) is normally injected by the bundler and is exposed as
-`Lazy.moduleUrl` for island and asset tooling.
+### Lazy hydration identity
 
 ```tsx
 const About = lazy(() => import("./About"));
@@ -147,161 +96,78 @@ const Settings = lazy(() => import("./pages"), { export: "Settings" });
 const moduleRef: string | undefined = About.moduleUrl;
 ```
 
-Hydration matches preloaded lazy modules **positionally by
-hydration id**, not by module identity, so a client callsite without
-`moduleUrl` (including `import.meta.glob`) hydrates correctly. On the server:
+`lazy(loader, options?, moduleUrl?)` comes from `solid-js`. Keep `options.export`
+a call-site literal. The bundler normally supplies the third argument.
+Hydration matches preloaded modules by positional hydration id, including
+`import.meta.glob` callsites without that argument.
 
-- If the callsite has no `moduleUrl`, Solid waits for the import and uses the
-  bundler-injected `$$moduleUrl` export for deferred asset registration. This
-  does **not** populate the component getter: `Lazy.moduleUrl` stays `undefined`
-  for that glob-style callsite. If neither identity exists, SSR still renders
-  and warns that the client will load the module late; it no longer throws.
-- When the callsite did supply `moduleUrl`, reading `Lazy.moduleUrl` during an
-  SSR request resolves it through the asset manifest to the client-loadable
-  entry URL and registers modulepreload hints. Outside a request it is the raw
-  callsite specifier; when the manifest misses, it also falls back to that raw
-  specifier.
-- A lazy component inside `<NoHydration>` still renders on the server. Reading
-  its resolved `moduleUrl` is the preload signal when island markup will load
-  it separately.
+On the server, a missing callsite URL uses the module's injected `$$moduleUrl`
+for deferred asset registration; `Lazy.moduleUrl` itself remains undefined.
+If both identities are absent, SSR renders and warns about late client loading.
+A supplied URL resolves through the request asset manifest, registering preload
+hints; outside a request or on a manifest miss it stays the raw specifier.
+`NoHydration` still renders lazy content; reading its resolved URL can preload
+code for separately mounted islands.
 
-## DOM: attributes, class, events, refs
+## Attributes, classes, events
 
-### Attributes follow HTML
+Use lowercase HTML attributes (`tabindex`, `readonly`) and camelCase handlers
+(`onClick`). Boolean attributes use presence/absence. Stateful properties retain
+platform forms: `value`, `defaultValue`, `checked`, `defaultChecked`, `selected`,
+`defaultSelected`, `muted`, `defaultMuted`. Use defaults for initial field state.
 
-- Built-in attribute names are **lowercase**: `tabindex`, not `tabIndex`.
-  Event handlers stay camelCase (`onClick`).
-- Booleans are presence/absence: `muted={false}` removes the attribute. When
-  the platform wants a literal string, pass `"true"`.
-- `attr:` / `bool:` / `on:` / `oncapture:` / `class:` / `style:` namespaces are
-  all gone.
-- Form-field stateful props remain props and are special-cased: `input.value`,
-  `defaultValue`, `checked`, `defaultChecked`, `select.value`, `option.value/
-  selected/defaultSelected`, `textarea.value`, `video/audio.muted/defaultMuted`.
-- rc.5 types the platform's customizable-select child as lowercase
-  `<selectedcontent>`. It is an intrinsic HTML element, not a Solid control-flow
-  component and not `<SelectedContent>`.
-- For DOM initial state use platform defaults (`defaultValue={x}`), not a
-  frozen reactive read. `/*@once*/` is gone — keep reactive reads reactive, or
-  use `untrack` in JS for a deliberate one-shot.
-
-The rc.5 compiler treats JSX nesting that the browser parser would restructure
-as an error rather than a warning. Fix the invalid HTML (tables, paragraphs,
-forms, and similar parser-sensitive cases); `validate: false` is an integration
-escape hatch, not an application workaround.
-
-### `class` — object/array forms (no `classList`)
-
-```jsx
-<div class="card" />
-<div class={{ active: isActive(), disabled: isDisabled() }} />
-<div class={["card", props.class, { active: isActive() }]} />
+```tsx
+<div class={["card", props.class, { active: active() }]} />
+<button onClick={event => (enabled() ? save : explain)(event)}>Save</button>
 ```
 
-Don't build class strings with template literals / `.filter(Boolean).join(" ")`
-— that's the React/classnames reflex; the array+object form composes.
+Class accepts strings, arrays, and objects. Event binding expressions are evaluated
+once; put changing decisions inside a stable callback. Spread props reapply changed
+handlers, which is a separate binding path.
 
-### Events
+Delegated listeners belong to render containers, including ShadowRoots; root
+disposal removes them. Portal events bubble through the logical tree.
+Native listener options belong in ref setup, with cleanup where its lifetime
+requires removal (especially shared/external nodes).
 
-camelCase handlers (`onClick`) use Solid's delegated path. Delegation is owned
-by **render roots** (not `document`): `render()`/`hydrate()` install listeners
-on their container and dispose them with the root; ShadowRoot rendering scopes
-to the shadow root; `Portal` mounts outside the root still bubble through the
-logical tree. If you called `clearDelegatedEvents()` — remove it, dispose the
-root instead.
+## Refs and directives
 
-Native listener options live in ref callbacks:
-
-```jsx
-const on = (type, handler, options) => el => el.addEventListener(type, handler, options);
-<button ref={on("click", handleClick, { capture: true })} />
-```
-
-### Refs and directives (no `use:`)
-
-`ref` is the single composition point: element access (`ref={el => ...}`),
-directive factories (`ref={tooltip({ content: "Save" })}`), arrays
-(`ref={[autofocus, tooltip(opts)]}`, nesting allowed).
-
-Two-phase directive factory (recommended):
+Use callbacks, callback arrays (nesting allowed), or a factory returning a callback:
 
 ```ts
-function titleDirective(source) {
-  let el;                                  // setup phase (owned): primitives here, no DOM writes
-  createEffect(source, value => { if (el) el.title = value; });
-  return nextEl => {                       // apply phase (unowned): DOM writes, no new primitives
-    el = nextEl;
-    el.title = source();
-  };
+function titleDirective(source: () => string) {
+  let node: HTMLElement | undefined;
+  createEffect(source, title => { if (node) node.title = title; });
+  return (el: HTMLElement) => { node = el; el.title = source(); };
 }
 ```
 
-For library code that forwards or applies user refs, use `applyRef` rather than
-manually flattening callback arrays; its exact DOM typing and recursive `JSX.Ref`
-shape are in `references/typescript-setup.md`.
+Create reactive work in the factory's owned setup; apply DOM work in the returned
+ref. Compose `ref={[el => { node = el; }, autofocus]}`; bare local assignment is
+compiled only for a single `ref={node}`. See [TypeScript setup](typescript-setup.md)
+for `JSX.Ref` and `applyRef`, and [reactivity](reactivity.md) for measurement timing.
 
-### `claimElementTree` is renderer infrastructure
+`claimElementTree(root)` is renderer infrastructure for frames/routers/adopted
+SSR ranges. It sweep-claims `a[href]` and `form[action]` descendants when DOM arrives
+without compiled creation code; server export is a no-op. App code uses normal refs.
 
-`claimElementTree(root)` sweep-claims navigation-relevant descendants such as
-`a[href]` and `form[action]` when live DOM arrives without compiled creation code.
-It is a low-level integration primitive for frames, routers, and adopted/streamed
-SSR ranges—not an application ref, hydration, or DOM-initialization idiom. The
-server export is a no-op.
+## Render and Portal
 
-## Rendering entries
+`render`/`hydrate` come from `@solidjs/web`; dispose via the returned root disposer.
+`renderToString` is synchronous. For settled async HTML, use
+`await renderToStream(code, options)` (`PromiseLike<string>`). Consume once through
+await, `.pipe`, `.pipeTo`, or `.readable`; mixed consumers throw.
+`renderToStringAsync` is absent from the published exports.
 
-```ts
-import { render, hydrate, Portal } from "@solidjs/web";              // client
-import { renderToString, renderToStream, isServer, isDev } from "@solidjs/web"; // server
-```
+`Portal` is client-only: SSR skips its children, async work, and serialization.
+Hydration renders the children fresh after settle. Hoist server-required reads
+above it and put a local `Loading` inside for client-started data:
 
-`render` returns a dispose function.
-
-`renderToString()` is synchronous. For a fully settled async HTML string,
-`await renderToStream(code, options)`; the returned stream is `PromiseLike<string>`.
-`renderToStringAsync` does not exist. Consume a stream exactly once through
-`await`, `.pipe()`, `.pipeTo()`, or `.readable`; mixing distinct consumers throws.
-
-### Typed SSR preload descriptors
-
-SSR asset manifests may carry explicit `preloads?: PreloadLink[]`; they are not
-inferred automatically from an asset's scripts/styles. The published shape is:
-
-```ts
-import type { JSX, PreloadLink } from "@solidjs/web";
-
-const preload: PreloadLink = {
-  href: "/fonts/ui.woff2",
-  as: "font",                    // JSX.HTMLPreloadAs
-  type: "font/woff2",
-  crossorigin: "anonymous",
-  fetchpriority: "high",        // JSX.HTMLFetchPriority
-};
-```
-
-`PreloadLink` also accepts `integrity`, `referrerpolicy`, and `media`.
-`JSX.HTMLPreloadAs` is `"fetch" | "font" | "image" | "script" | "style" |
-"track"`; `JSX.HTMLFetchPriority` is `"high" | "low" | "auto"`. These are
-renderer/SSR integration types. Ordinary application markup should continue to
-author `<link rel="preload" ...>` normally. String and streaming SSR, lazy
-module resolution, and frame responses preserve the descriptors; development
-warns when a `font`/`fetch` preload omits `crossorigin`.
-
-### `Portal` — client-only island
-
-The server renders nothing for `<Portal>`: children never evaluate, no async
-starts, nothing is serialized. Under hydration the children render fresh
-after settle, not during the hydration walk — so a read that must run on the
-server belongs above the portal (hoist the read, don't rely on the portal to
-run it). Async started inside a portal therefore begins on the client; give
-it its own `<Loading>` if you want fallback UI, since async discovered after
-settle forwards through already-initialized ancestor boundaries as ordinary
-pending status rather than dropping any of them back into fallback.
-
-```jsx
+```tsx
 <Portal mount={modalRoot}>
-  <Loading fallback={<Spinner />}>
-    <Dialog />
-  </Loading>
+  <Loading fallback={<Spinner />}><Dialog /></Loading>
 </Portal>
 ```
+
+Already initialized ancestor boundaries treat this late work as ordinary pending;
+the local boundary provides its initial fallback.

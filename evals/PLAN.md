@@ -1,181 +1,121 @@
-# Skill exam — test plan
+# Skill exam
 
-Measures whether the SolidJS 2.0 skills actually move a model off its wrong
-priors. The deliverable of this repo is reference content; this eval is how we
-tell whether that content is doing its job and whether an edit improved or
-regressed it (precedent: a single "before paint" phrase once made an answer
-*worse* than baseline — exactly what this catches).
+The bank tests four axes: current APIs, practical patterns, Solid vs React,
+and Solid v2 vs v1. Each `must_include` claim has a verified reference in `source`.
+Answers pass when they satisfy every claim. Regex matches are not verdicts.
 
-## What it tests
+## Conditions
 
-Four axes, sourced from the verified references (`skills/solidjs-v2/references/`):
+- `base`: prior knowledge, with the same version preamble and question.
+- `with-skill`: the model retrieves the shipped skill and follows its routing.
+  Codex receives the explicit SKILL.md path. Claude receives the plugin and
+  uses its own skill trigger. Codex measures explicit retrieval, not discovery.
 
-| Axis | Question | What a wrong answer looks like |
-|---|---|---|
-| `api` | API understanding — signatures and current exports | invented args, `createResource`, stale SSR helpers |
-| `pattern` | Idiomatic basic patterns | `getBoundingClientRect` in a `ref`, "createEffect flashes" |
-| `react` | Solid vs React | destructured props, deps array, passing accessors as values |
-| `v1` | Solid 2.0 vs 1.x | `batch()`, `onMount`, `solid-js/store`, `<Index>`, `createSelector` |
+Each answer uses a fresh session in a neutral temporary directory. Codex gets
+an auth-only temporary home, read-only sandbox, and disabled personal config.
+Base answers use no tools; observed Codex tool activity invalidates that cell.
+Skill retrieval is recorded separately from correctness; Claude's turn count
+is a proxy, while Codex records skill paths in tool activity.
 
-The v1 and react axes matter most: models were trained on a corpus with **no
-Solid 2.0**, so their default is React or Solid 1.x. The eval asks whether the
-skill overrides that.
+## Grading and cost
 
-## Providers
+Default: **Luna low** answers, **Terra medium** judges **eight answers per call**.
+A 68-question, two-condition run takes 136 answer calls and 17 judge calls,
+instead of 136 judge calls. This reduces call overhead; answer/rubric tokens
+still have to be read. Every answer stays isolated from other exam questions.
 
-The runner supports two answer backends through `--provider`:
+The judge receives anonymous entries without model/condition labels. It checks
+each entry against its own rubric and quotes the answer for every met claim.
+The runner validates entry IDs, full claim coverage, booleans, and verbatim
+quotes. Invalid judgments and provider errors remain ungraded and make the run
+exit nonzero; they are excluded from pass rates and listed in the summary.
 
-- **`claude`** (default) — calls `claude -p`.
-- **`codex`** — calls `codex exec` with an ephemeral session, a read-only
-  sandbox, and JSONL output. Every run gets a fresh temporary `CODEX_HOME`
-  containing only a copy of the current authentication file—no user config,
-  `AGENTS.md`, skills, plugins, MCP servers, memories, or history. The answer
-  model is selected with the same `--models` flag.
+Batching trades some judge isolation for fewer calls. Use `--grade-batch-size 1`
+for an independent per-answer audit. Review disputed verdicts in the raw JSON
+before changing reference content or answer keys.
 
-The grader defaults to Claude Sonnet. Select a Codex judge with
-`--grader-provider codex --grader <model>`; `--reasoning` controls Codex answer
-models and `--grader-reasoning` controls a Codex grader.
+## Commands
 
-Runs use one answer provider at a time. Keeping provider in the raw result and
-summary avoids ambiguous model names and makes separate runs easy to compare.
-
-## The three conditions (this is the design decision)
-
-Each question is asked verbatim (same prompt, Solid version stated inline) under:
-
-- **`base`** — bare model, no skill. The control. Codex tool activity invalidates
-  and excludes the cell rather than letting a contaminated answer affect rates.
-- **`deployed`** — provider-specific tool retrieval:
-  - Claude receives `--plugin-dir <repo>` and must auto-trigger and route the
-    real skill. This is the actual Claude plugin and measures trigger + routing
-    + content together.
-  - Codex runs without personal config or rules and is explicitly pointed at the
-    repository's `SKILL.md`; it must read the skill, follow its routing table,
-    and open the relevant reference with tools. This tests the same shipped
-    skill files and agentic routing, but it is **explicit retrieval**, not a
-    measurement of Codex automatic skill discovery.
-- **`content`** — `SKILL.md` + the *one* topically-routed reference injected as a
-  system prompt for Claude or directly into the isolated prompt context for
-  Codex. It simulates perfect routing and isolates **content quality** from
-  trigger/routing reliability. This is the iteration diagnostic — when an edit
-  changes a score here, it's the words that changed it, not luck in routing.
-
-We deliberately do **not** inject all references at once: that reports a
-number for a config nobody ships and multiplies cross-contamination between
-references (the failure mode behind the original Q5 regression).
-
-For Claude, `deployed` is the truth about the shipped plugin; for Codex, it is
-the explicit agentic-retrieval condition. `content` is the microscope for
-editing the shared skill files. Read them together: if `content` passes but
-`deployed` fails, the content is right but retrieval/routing is not.
-
-## Two axes, measured separately: delivery vs quality
-
-These are different failures and must not be averaged into one number:
-
-- **Delivery / retrieval** — does the model actually open the skill? For Claude,
-  **>1 turn** in `deployed` mode is the auto-trigger proxy. For Codex, retrieval
-  is successful only when the skill path appears in a completed tool item;
-  unrelated tool activity does not count. The summary labels these differently
-  because they are not the same measurement. Both need no
-  grading; run `--no-grade` for a cheap delivery-only check. (Observed: weak
-  Claude models like haiku can skip the skill on questions that do not name an
-  API verbatim.)
-- **Quality (content)** — when the skill IS in context (`content` mode, perfect
-  routing), are the answers right? This is the graded number.
-
-A low delivery rate with high content quality points the fix at the **SKILL.md
-description / trigger surface**, not the reference text. A high delivery rate with
-low content quality points at the reference text. Conflating them sends you
-editing the wrong file.
-
-## Grading
-
-An LLM grader (default `sonnet`) checks each answer against the rubric in
-`questions.json`. Two guards keep the grader honest, because the grader has the
-same Solid-2.0 blind spot as the subjects:
-
-1. **The rubric is the sole source of truth.** The grader is instructed to judge
-   only "does the answer assert these exact claims," never to decide what's
-   correct about Solid from its own (stale) knowledge. It must quote the answer
-   verbatim as evidence for each met claim. It's blind to which condition produced
-   the answer.
-2. **Forbidden APIs are judged by intent, not by substring.** These questions are
-   contrast-heavy — a correct answer *must* mention `batch()`, `createResource`,
-   `<Index>` to say "don't use this". A regex can't tell recommend from mention, so
-   it would false-fail good answers. Instead `must_not` is handed to the grader as a
-   forbidden list with the explicit rule: fail only if the answer **adopts** one in
-   its own solution; contrasting against it is correct. The regexes still run, but
-   only as a **non-fatal audit flag** in the raw JSON (a human-reviewable "this token
-   appeared") — they never decide pass/fail.
-
-Every rubric claim carries a `source` pointing at the reference lines it came
-from. **Do not add a claim you can't trace to a verified reference or the
-installed typings** — a confidently-wrong answer key silently inverts the eval.
-
-Raw answers + per-claim verdicts are saved (`results/run-*.json`) so any score is
-auditable by hand. Trust the **aggregate pass-rate per (model, condition)**, not
-single-question swings — N is small and the models are nondeterministic.
-
-## Running
-
-```bash
-node evals/run.mjs --quick      # smoke test the harness: 4 Q, haiku, base+deployed, N=1
-node evals/run.mjs              # full: all Q, sonnet+haiku, base+deployed, N=1
-node evals/run.mjs --conditions base,content,deployed --n 3   # add content mode, smooth noise
-node evals/run.mjs --questions axis:react                     # one axis
-node evals/run.mjs --questions B1,B2 --conditions content     # iterate on one edit (cheapest)
-node evals/run.mjs --conditions deployed --no-grade           # delivery/trigger rate only (near-free)
-node evals/run.mjs --provider codex --models gpt-5.6-luna --quick
-node evals/run.mjs --provider codex --models gpt-5.6-luna --questions A9,A10 --conditions content
-node evals/run.mjs --provider codex --models gpt-5.6-luna --reasoning low \
-  --grader-provider codex --grader gpt-5.6-terra --grader-reasoning medium
+```sh
+node evals/run.test.mjs                     # offline harness checks
+node evals/run.mjs                          # full Luna low exam
+node evals/run.mjs --quick                  # four questions, both conditions
+node evals/run.mjs --questions A31,B19,C1,D2 # focused comparison
+node evals/run.mjs --conditions with-skill  # skill-only follow-up
+node evals/run.mjs --no-grade               # answers/retrieval only
+node evals/run.mjs --resume evals/results/run-<timestamp>.json
+node evals/run.mjs --provider claude --models haiku --grader sonnet
 ```
 
-Flags: `--provider` / `--grader-provider` (`claude` or `codex`), `--models`,
-`--reasoning`, `--conditions`, `--n`, `--grader`, `--grader-reasoning`,
-`--concurrency`, `--questions` (csv ids or `axis:<name>`), `--quick`,
-`--no-grade`.
+Other flags: `--models`, `--reasoning`, `--grader-provider`, `--grader`,
+`--grader-reasoning`, `--grade-batch-size`, `--concurrency`, `--n`, and
+`--questions axis:react` (also `api`, `pattern`, `v1`).
 
-Output: a markdown summary (delivery trigger rate + quality pass-rate matrix +
-per-axis + failure list) and a raw JSON. `results/` is git-ignored — it's run
-output, not a committed artifact. Every answer call runs in a neutral empty cwd
-so `base`/`content` cannot read the repo's own reference files off disk (that
-would contaminate the control). Codex additionally disables user config and
-rules for all three conditions. Only `auth.json` is copied into its temporary
-`CODEX_HOME`. `base`/`content` explicitly prohibit tool or web use, and the
-runner rejects any cell where JSONL reports a non-reasoning tool item—including
-web search or an unknown future item type. Rejected cells are excluded from pass
-rates and make the run exit non-zero. Codex `deployed` permits local read-only
-commands but prohibits web and external sources.
+Each completed answer and judge batch is saved atomically in `results/run-*.json`.
+Resume with the original flags plus `--resume`: valid answers/grades are reused,
+failed calls are retried. The input fingerprint covers configuration, selected
+questions/rubrics, and skill files; changed inputs require a fresh run.
+A Markdown report records pass counts, retrieval, and individual failures.
 
-## Token economy (what costs what, and how to not overpay)
+## Why keep the runner
 
-The dominant cost is `deployed`: it's multi-turn (the model reads references). Order
-of cost per answer: `base` ≈ `content` (single turn) ≪ `deployed` (several turns).
-Grading is a single extra short call per answer. So:
+[Promptfoo](https://www.promptfoo.dev/docs/providers/custom-script/) supports
+script providers and rubric grading. [OpenAI plugin-eval](https://github.com/openai/plugins/tree/main/plugins/plugin-eval)
+provides skill analysis and benchmark workflows. Our existing runner already
+handles the sourced bank and isolated Codex/Claude sessions; keeping it avoids
+an adapter/configuration migration solely to batch judging.
 
-- **Iterate content in `content` mode only.** Single-turn, deterministic routing,
-  graded — this is where edits get validated. You almost never need `deployed`
-  while tuning the words.
-- **Measure delivery separately and ungraded.** `--conditions deployed --no-grade`
-  gives the trigger rate with zero grading spend. Run it occasionally, not every
-  iteration.
-- **Drop `base` from routine runs.** It's the control — run it once to anchor, not
-  every time. (And in clean cwd it's now a true prior-only baseline.)
-- **Grader can be cheaper.** It's rubric-bound and explicitly forbidden from using
-  its own Solid knowledge, so a smaller grader (`--grader haiku`) is defensible;
-  spot-check agreement against `sonnet` on one run before trusting it wholesale.
-- **Subset with `--questions`** while iterating; run the full bank only to confirm a
-  finished edit.
-- Reach for the full `sonnet+haiku × base+content+deployed × N3` matrix only for a
-  release-grade snapshot, not day-to-day.
+## rc.8 verification checkpoint
 
-## What to read in the result
+Target: published `solid-js`, `@solidjs/web`, `@solidjs/signals`, and compiler
+`2.0.0-rc.8`; upstream anchor `f8b40b7e2049d67ceebe1d2e90a1029eb64e097d`.
+The bank contains 68 questions; updated keys cover the current contract.
 
-- `base` vs `deployed` on the **react** and **v1** axes = the skill's headline
-  value (overriding wrong priors).
-- A question where `base` already passes isn't a skill failure — it's a
-  non-discriminating question; the signal lives in the trap questions.
-- `content` worse than `base` on any question = a content regression. Fix the
-  wording, re-run that question in `content` mode, confirm before shipping.
+Local verification completed in isolated temporary projects:
+
+- `quick_validate.py` passed for all three skill folders; relative links,
+  frontmatter, question IDs/routes, JSON, and `git diff --check` passed.
+- TypeScript 7.0.2 strict checks passed for changed API/JSX examples and the
+  extracted SWR/socket patterns. An independent agent typechecked three tasks:
+  shallow keyed rows, optimistic live acknowledgment, and lazy/dynamic SSR.
+- Published-runtime assertion probes passed: refresh result and quiet pending;
+  until authoritative acknowledgment, timeout, abort; shallow optimistic rollback;
+  invoke direct result/abort; encrypted flash round trips for `0`, `false`, `""`,
+  and `null`; buffered stream delivery and cancellation.
+- Native compiler directive probes passed for wrapped module-level server exports
+  in client/server output. Compiled SSR probes confirmed dynamic fallback streaming
+  and first-shell holds for lazy code and `deferStream`.
+
+## rc.8 result — 2026-09-17
+
+Command: `node evals/run.mjs --n 3` (Luna low, Terra medium, batches of eight).
+All 408 answers were generated successfully and received valid judgments.
+
+| Repetition | base | with-skill |
+|---|---:|---:|
+| 1 | 2/68 (2.9%) | 34/68 (50.0%) |
+| 2 | 2/68 (2.9%) | 34/68 (50.0%) |
+| 3 | 3/68 (4.4%) | 36/68 (52.9%) |
+| Total | 7/204 (3.4%) | 104/204 (51.0%) |
+
+Skill retrieval: **204/204**. Required-claim coverage: **134/618 (21.7%)** base,
+**455/618 (73.6%)** with-skill. Twenty-seven questions failed whole-answer
+criteria in all three with-skill repetitions; reading the skill is reliable,
+but completeness still needs work.
+
+| Axis | base | with-skill |
+|---|---:|---:|
+| API | 2/105 | 54/105 |
+| Patterns | 3/69 | 36/69 |
+| Solid vs React | 2/15 | 9/15 |
+| v2 vs v1 | 0/15 | 5/15 |
+
+Judging used **69 calls**, including 18 retries for malformed/inexact evidence,
+versus 408 calls with one judge call per answer. This is a call-count reduction,
+not a measured monetary saving. The quote instruction was clarified during
+retries; answers, rubrics, and previously valid judgments stayed unchanged.
+
+Local artifacts: `results/run-2026-09-17T17-39-21-926Z.json` and the matching
+`.md` report. The JSON records each answer, claim verdict, quote, and repetition;
+`results/quote-fix-provenance.json` records the verified fingerprint migration
+for the quote-only instruction correction.

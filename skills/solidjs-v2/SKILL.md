@@ -1,102 +1,61 @@
 ---
 name: solidjs-v2
-description: Answer SolidJS 2.0 API and prerelease-behavior questions, and write or edit SolidJS 2.0 code (solid-js 2.x / next / RC). Use for questions or implementation involving components, signals/effects/batching, async data/generators/actions and Loading, stores and nested store views, lazy SSR/hydration, server functions ("use server"), experimental server components/frames, or DOM code for solid-js 2.x or @solidjs/web. Not for Solid 1.x projects and not for migrating 1.x code (see solidjs-v2-migration).
+description: Write or edit SolidJS 2.0 code and answer v2 API questions about reactivity, async data, stores, DOM, or server functions. Applies to solid-js major 2; use solidjs-v2-migration for 1.x conversion and solidjs-v2-reviewer for reviews.
 ---
 
 # SolidJS 2.0
 
-Solid 2.0 is **not React** and **not Solid 1.x**. Both priors are the dominant
-bug sources in generated code. When in doubt, distrust pattern-matching and
-check `references/cheatsheet.md` (official, ships with the package) or the
-installed typings in `node_modules`.
+## Confirm the version
 
-## Step 0 — confirm this is actually a v2 project
+Read the installed `solid-js` version (lockfile/package metadata); apply this
+skill to major 2. For a 1.x project, keep its 1.x conventions unless migration
+is requested. For a standalone v2 question, use the verified reference target.
+Installed typings take priority over these references when versions differ.
 
-Check before applying anything below:
+## Use the Solid v2 model
 
-- `package.json`: `solid-js` major is `2` (e.g. `2.0.0-rc.x`), and/or
-  `@solidjs/web` is a dependency.
-- `tsconfig.json`: `"jsxImportSource": "@solidjs/web"`.
+- **Components run once per mount.** JSX, memos, and effect compute callbacks
+  track reads. Keep props as `props.name`; read them inside those tracking scopes.
+- **JSX props expose values through getters.** Write `<Counter value={count()} />`
+  and read `props.value` in the child. For a manually built options object,
+  preserve laziness with a getter or an accessor matching the callee's type.
+- **Derive state.** Use `createMemo` for readonly derived state and
+  `createSignal(() => props.initial)` for a writable derivation. Invoke setters
+  and actions from handlers, effect apply callbacks, or `onSettled`.
+- **Writes commit on a microtask.** Use `flush()` when an imperative caller
+  needs the updated state or DOM on the next line.
+- **Effects have two phases.** `createEffect(compute, apply)` tracks in compute;
+  apply receives the result, performs side effects, and returns optional cleanup.
+- **Async belongs in computations.** Return a Promise/AsyncIterable from a memo
+  or derived store. Render consumers inside `Loading`; handle errors with `Errored`.
+- **Mutations use actions.** Optimistic write → yield server work →
+  `yield refresh(source)` for refetch confirmation, or `yield until(predicate)`
+  for a live acknowledgment. A saving indicator reads an optimistic flag.
+- **Stores use drafts.** Import from `solid-js`; write
+  `setStore(draft => { draft.user.name = name; })`.
+- **DOM belongs to `@solidjs/web`.** Use its JSX types and `jsxImportSource`;
+  lowercase HTML attributes, `class` arrays/objects, callback refs.
 
-If `solid-js` is `1.x` (imports like `solid-js/web`, `solid-js/store`), **stop —
-these rules do not apply**; that's a Solid 1.x project. If the task is to
-convert it, use the `solidjs-v2-migration` skill instead.
+These rules replace React's render/hook/dependency-array model and Solid 1.x's
+synchronous writes, single-callback effects, and resource-specific loading API.
+Use the task reference for exact callback shapes and async semantics.
 
-Prereleases drift: when docs and the installed package disagree, trust the typings in
-`node_modules` (`solid-js`, `@solidjs/web`, `@solidjs/signals`).
+## Read the matching reference before implementing
 
-## The ten rules that prevent most bugs
-
-1. **Reads lag writes.** Updates apply on the next microtask:
-   `setCount(1); count()` still returns `0`. Synchronous point: `flush()`.
-   `batch()` does not exist.
-2. **`createEffect` takes two functions** — `(compute, apply, options?)`.
-   Compute tracks and returns a value; apply does side effects (untracked) and
-   may return a cleanup. The 1.x single-callback form throws. `on()`,
-   `createComputed`, initial-value args: all gone.
-3. **Never write signals/stores or invoke an action inside a reactive scope**
-   (memo, compute, component body) — throws in dev. Define actions there if
-   useful, but invoke/write from event handlers, effect callbacks, actions, or
-   `onSettled`. `untrack()` suppresses read tracking but does not exempt writes.
-   Derive instead of writing back.
-4. **No top-level reactive reads in component bodies** and no destructured
-   props — warns, value goes stale. Read via `props.x` inside JSX / memos /
-   effect computes; `untrack(() => ...)` for deliberate one-shots.
-5. **Props are values, not accessors.** Call site: `<X v={count()} />`, never
-   `<X v={count} />`. Child: `props.v`, never `function X({ v })`. This stays
-   reactive — the compiler turns `v={count()}` into `{ get v() { return count() } }`,
-   so reading `props.v` in the child re-runs `count()` in the child's tracking
-   scope. Passing the accessor (`v={count}` + `props.v()`) to "keep reactivity" is
-   a misconception: props have **always** been getters in Solid (1.x and 2.0
-   alike — value-passing didn't change), so it's unnecessary and just forces
-   every consumer to call a function.
-6. **Async is just a computation**: `const user = createMemo(() => fetchUser(id()))`
-   — no `createResource`. Wrap consumers in `<Loading fallback={...}>`;
-   errors go to `<Errored>`. In-flight-change indicators: `isPending(() => user())`
-   — fires for changed inputs and `affects()` declarations; a bare `refresh()`
-   is normally quiet. `await refresh(source)` waits for the settled re-ask;
-   `until(predicate)` waits for a truthy live-source acknowledgement.
-7. **Store setters take a draft**: `setStore(s => { s.a.b = 1; })` (produce is
-   the default). Store APIs (`createStore`, `reconcile`, `snapshot`…) are
-   exported from `solid-js` — `solid-js/store` does not exist.
-8. **List rendering is `For` with keying modes** — `<Index>` is gone. Callback
-   shapes differ per mode (see references); `keyed={false}` gives
-   `(itemAccessor, plainIndex)`. Fixed-count rendering: `<Repeat>`.
-9. **Lifecycle**: `onSettled(() => { ...; return cleanup; })` replaces
-   `onMount`/`onCleanup` for component-level setup-and-teardown. It's a leaf
-   owner — no primitives or `onCleanup` inside.
-10. **Imports moved**: `@solidjs/web` for `render`/`hydrate`/`Portal`/`Dynamic`
-    (not `solid-js/web`); `jsxImportSource: "@solidjs/web"`; DOM attributes are
-    lowercase (`tabindex`); `class` takes object/array forms (`classList` is
-    gone); directives are `ref={factory(opts)}` (`use:` is gone).
-
-## Reference routing
-
-Read the file matching the task before writing code in that area:
-
-| Task touches | Read |
+| Task | Reference |
 |---|---|
-| Quick API lookup, import list, full 1.x→2.0 footgun list | `references/cheatsheet.md` (official) |
-| Signals, memos, split/render effects and paint timing, `createReaction`, batching/flush, lifecycle, ownership, dev diagnostics | `references/reactivity.md` |
-| Data fetching, loading values, async iterator completion, Loading/Errored, isPending/latest/resolve/awaitable refresh/until, action call scope/errors, optimistic UI | `references/async-and-actions.md` |
-| createStore, reconcile, projections, nested store-view structural tracking, compiler patch-driver boundary, snapshot/deep, merge/omit, storePath | `references/stores.md` |
-| For/Repeat/Show/Switch/Reveal, dynamic/lazy components, lazy SSR/hydration identity, class/attributes/events/refs/directives, render entries | `references/control-flow-and-dom.md` |
-| tsconfig, JSX types, import paths, Context typing, test setup | `references/typescript-setup.md` |
-| Composed patterns: SWR query, optimistic mutations, selection projections, global state, demand-driven resources | `references/patterns.md` |
-| Naming a primitive/composable (`create*` vs `use*`), cross-cutting conventions | `references/conventions.md` |
-| `"use server"` directive, module/function wrappers, server-function addressing/invoke/live, respond/redirect/reload, GET/withMeta, fetch/prepareRequest, named single-flight, no-JS, getRequestEvent | `references/server-functions.md` |
-| Experimental server components, frames, client slots/state preservation, `installServerComponents`, `serverFunctions: { components: true }` | `references/server-components.md` |
+| Signals, effects, ownership, lifecycle, paint timing, diagnostics | [reactivity](references/reactivity.md) |
+| Fetching, Loading/Errored, pending, actions, refresh, live acknowledgments | [async and actions](references/async-and-actions.md) |
+| Drafts, reconciliation, projections, shallow/nested stores, snapshot | [stores](references/stores.md) |
+| Lists, Show/Reveal, dynamic/lazy, SSR, attributes, events, refs | [control flow and DOM](references/control-flow-and-dom.md) |
+| Imports, TypeScript, context, testing setup | [TypeScript setup](references/typescript-setup.md) |
+| SWR, socket streams, selection, shared state | [patterns](references/patterns.md) |
+| Naming `createX` and `useX` | [conventions](references/conventions.md) |
+| Server functions, transport, validation, single-flight, no-JS forms | [server functions](references/server-functions.md) |
+| Experimental server components and client slots | [server components](references/server-components.md) |
 
-## Failure modes
+## Verify the result
 
-- **App renders nothing / mount seems stuck** → pending async outside a
-  `Loading` boundary defers the root mount; check the console for
-  `ASYNC_OUTSIDE_LOADING_BOUNDARY`.
-- **Dev throws/warns with a diagnostic code** (`REACTIVE_WRITE_IN_OWNED_SCOPE`,
-  `STRICT_READ_UNTRACKED`, …) → table of codes and fixes at the bottom of
-  `references/reactivity.md`. Fix the cause; never silence with `ownedWrite`
-  for app state.
-- **Test asserts stale values** → missing `flush()` after writes, or reactive
-  code created without an owner (`createRoot` in tests).
-- **An API from docs/examples doesn't exist** → prereleases drift; verify against
-  installed typings and prefer them over any doc, including these references.
+Typecheck with the project's installed packages and run relevant project checks.
+Exercise changed async/DOM behavior; a successful typecheck proves signatures,
+while runtime checks establish ordering, cleanup, pending, and hydration behavior.
