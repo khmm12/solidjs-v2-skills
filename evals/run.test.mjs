@@ -11,6 +11,8 @@ const root = mkdtempSync(join(tmpdir(), 'solid-eval-test-'));
 try {
   const repo = dirname(dirname(fileURLToPath(import.meta.url)));
   const bank = JSON.parse(readFileSync(join(repo, 'evals/questions.json'), 'utf8'));
+  const skill = readFileSync(join(repo, 'skills/solidjs-v2/SKILL.md'), 'utf8');
+  assert.match(skill, /^Reference target: `solid-js@[^`]+` and `@solidjs\/web@[^`]+`\.$/m);
   assert(bank.meta.rubric_revision);
   assert.equal(new Set(bank.questions.map(q => q.id)).size, bank.questions.length);
   for (const q of bank.questions) {
@@ -20,7 +22,11 @@ try {
     assert(!/SKILL\.md|\/references\/|\$solidjs-v2/.test(q.prompt), q.id);
     const refs = q.source.match(/[a-z-]+\.md/g);
     assert(refs?.length, `missing source: ${q.id}`);
-    for (const ref of refs) assert(readFileSync(join(repo, 'skills/solidjs-v2/references', ref), 'utf8').includes('Verified against'));
+    for (const ref of refs) {
+      const text = readFileSync(join(repo, 'skills/solidjs-v2/references', ref), 'utf8');
+      assert.match(text, /^# /);
+      assert(!text.includes('Verified against'));
+    }
   }
   mkdirSync(join(root, 'evals'));
   mkdirSync(join(root, 'bin'));
@@ -42,7 +48,8 @@ let text = 'fixture evidence';
 if (prompt.includes('Assess each entry independently')) {
   const entries = JSON.parse(prompt.slice(prompt.lastIndexOf('\\n\\n[{') + 2));
   const sources = JSON.parse(prompt.split('Shared sources:\\n')[1].split('\\n\\n[{')[0]);
-  assert(sources.length === 9 && sources.every(s => s.text.includes('Verified against')));
+  assert(sources.length === 9 && sources.every(s => s.text.startsWith('# ')));
+  const sourceEvidence = sources[0].text.split('\\n').find(Boolean);
   assert(entries.every(e => !e.sources), 'shared references appear once per batch');
   text = JSON.stringify({grades: entries.map(e => ({id: e.id,
     checks: e.required_claims.map((_, i) => ({ i: i + 1, status: process.env.UNRESOLVED ? 'unresolved' : 'supported',
@@ -50,7 +57,7 @@ if (prompt.includes('Assess each entry independently')) {
       reason: process.env.UNRESOLVED ? 'Conflicting rubric.' : '', ...(process.env.UNRESOLVED ? { cause: 'rubric-defect' } : {}) })),
     audit: {status: process.env.INCOMPLETE_AUDIT ? 'incomplete' : 'complete', reason: process.env.INCOMPLETE_AUDIT ? 'Review unfinished.' : '', findings: process.env.EXTRA_ERROR ? [{
       kind: 'code', status: 'incorrect', evidence: 'fixture evidence', reason: 'Fixture code violates the supplied contract.', critical: true,
-      source: { id: sources[0].id, evidence: process.env.BAD_SOURCE ? 'made-up source quote' : 'Verified against' },
+      source: { id: sources[0].id, evidence: process.env.BAD_SOURCE ? 'made-up source quote' : sourceEvidence },
     }] : []},
   }))});
 } else if (prompt.includes('Grade each entry independently')) {

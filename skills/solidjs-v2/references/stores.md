@@ -1,7 +1,5 @@
 # Stores
 
-Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
-
 ## Draft setters
 
 Import `createStore` from `solid-js`; its returned tuple provides the store and

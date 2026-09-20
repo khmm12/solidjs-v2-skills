@@ -1,7 +1,5 @@
 # Async data and actions
 
-Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
-
 ## Fetch and render
 
 ```tsx

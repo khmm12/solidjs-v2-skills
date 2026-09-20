@@ -5,6 +5,11 @@ The deliverable is **reference content** — correctness of API claims is the
 whole product. There is no product build. Verify content with published typings, small runtime
 probes, and the skill exam.
 
+Coding agents bring strong React assumptions, weak Solid 1 knowledge, and
+almost no reliable Solid 2 knowledge. These skills teach the Solid 2 mental
+model and APIs so agents can write working code instead of filling gaps with
+React patterns, old Solid APIs, or invented APIs.
+
 ## Structure
 
 - `.claude-plugin/plugin.json` + `marketplace.json` — Claude Code plugin
@@ -18,9 +23,9 @@ probes, and the skill exam.
   skills exactly one level under `skills/`, keep `name`/`description` plain
   YAML strings, and remember the whole skill folder is copied on install —
   references must stay inside their skill's folder.
-- `skills/solidjs-v2/references/*.md` — topic distillations. Each starts with a
-  version marker line ("Verified against …"). Keep them rule + canonical
-  example + footgun; no RFC prose dumps.
+- `skills/solidjs-v2/references/*.md` — topic distillations. They inherit the
+  exact reference version from their skill's root `SKILL.md`. Keep them rule +
+  canonical example + footgun; no RFC prose dumps.
 
 ## Ground truth, in priority order
 
@@ -97,8 +102,8 @@ reference content.
    anchored commit; fold API changes into the affected reference files.
 3. Re-verify drift-prone claims against the new published typings (removed
    exports, option overloads, and `refresh()`/pending semantics).
-4. Bump version markers in reference files, `version` in both plugin manifests,
-   and the anchor commit/version in README.
+4. Bump the reference target in each root `SKILL.md`, `version` in both plugin
+   manifests, and the Solid version in README.
 5. Re-run `evals/` and fix any question whose answer key moved — a removed or
    renamed API shifts the rubric, so update `must_include`/`source` rather than
    leaving a stale (silently inverted) answer key.

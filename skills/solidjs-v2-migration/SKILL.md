@@ -5,6 +5,8 @@ description: Convert a Solid 1.x project, component, or file to SolidJS 2.0. Use
 
 # Migrate Solid 1.x to 2.0
 
+Reference target: `solid-js@2.0.0-rc.8` and `@solidjs/web@2.0.0-rc.8`.
+
 1. **Establish source and target.** Read the installed version/lockfile and the
    requested target. Apply this workflow when converting 1.x to major 2; keep
    ordinary maintenance on its existing major. Match runtime, web renderer,

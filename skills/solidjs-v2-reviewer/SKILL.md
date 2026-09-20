@@ -5,6 +5,8 @@ description: Review SolidJS 2.0 diffs or files for reactivity, async, DOM, and A
 
 # Review SolidJS 2.0
 
+Reference target: `solid-js@2.0.0-rc.8` and `@solidjs/web@2.0.0-rc.8`.
+
 ## Establish scope
 
 Read the installed `solid-js` version and review the requested diff/files.

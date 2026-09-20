@@ -1,6 +1,5 @@
 # Server components (experimental preview)
 
-Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8
 (published typings) and upstream `f8b40b7e` sources.
 
 Server components are an **experimental preview outside Solid 2.0's stability

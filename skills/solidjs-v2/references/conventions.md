@@ -1,7 +1,5 @@
 # Naming primitives
 
-Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
-
 - `createX`: creates a fresh reactive primitive/resource for this calling scope.
   Examples: `createSignal`, `createMemo`, `createWindowSize`.
 - `useX`: accesses an existing shared value. Examples: `useContext`, or a

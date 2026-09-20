@@ -1,7 +1,5 @@
 # TypeScript and project setup
 
-Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
-
 ## Packages and JSX
 
 Use matching `solid-js`/`@solidjs/web` prereleases and a compatible compiler:

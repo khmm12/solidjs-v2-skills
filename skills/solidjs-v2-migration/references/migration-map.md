@@ -1,7 +1,5 @@
 # Solid 1.x to 2.0 migration map
 
-Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
-
 ## Imports and renames
 
 | 1.x | v2 target |

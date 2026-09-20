@@ -1,7 +1,5 @@
 # Reactivity
 
-Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
-
 ## Batching and derivation
 
 Batching is automatic (`batch` is absent from v2 exports). Writes commit on the next microtask. Read synchronously after `flush()`:

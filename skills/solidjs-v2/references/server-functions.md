@@ -1,7 +1,5 @@
 # Server functions
 
-Verified against solid-js@2.0.0-rc.8 / @solidjs/web@2.0.0-rc.8 published typings and solidjs/solid@f8b40b7e sources/tests.
-
 Server functions are core Solid functionality. Use the Solid compiler/Vite
 integration and mount the runtime handler; a router or SolidStart is optional.
 

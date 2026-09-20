@@ -1,15 +1,18 @@
 # SolidJS v2 skills
 
-Skills for building SolidJS 2.0 applications with coding agents.
+Coding agents are good at React, shaky on Solid 1, and largely clueless about
+Solid 2. Without extra context, they reach for React's render model, use old
+Solid APIs, or invent APIs that do not exist.
 
-Write reactive components, handle async data and optimistic updates, migrate
-Solid 1.x code, or review a diff. The collection includes focused references and
-TypeScript examples checked against published Solid packages.
+These skills teach agents to think in Solid 2 terms and write working Solid 2
+code. They cover new code, migration from Solid 1.x, and review, with examples
+for reactivity, async data, stores, DOM, and server rendering.
 
 Works with Codex, Claude Code, and other agents supported by
 [`npx skills`](https://github.com/vercel-labs/skills#supported-agents).
 
-**Target:** `solid-js@2.0.0-rc.8` and `@solidjs/web@2.0.0-rc.8`.
+Current Solid version: `solid-js@2.0.0-rc.8` and
+`@solidjs/web@2.0.0-rc.8`.
 
 ## Install
 
@@ -100,15 +103,15 @@ Describe the task in your agent as usual. For example:
 The agent selects the relevant skill from the task. You can also request a skill
 by name.
 
-## Version and sources
+## Results
 
-The references target Solid 2.0 rc.8. API signatures are checked against published
-typings; behavior is checked against upstream source and tests. The source anchor
-is [solidjs/solid at f8b40b7e](https://github.com/solidjs/solid/tree/f8b40b7e2049d67ceebe1d2e90a1029eb64e097d),
-including the [Solid 2 cheatsheet](https://github.com/solidjs/solid/blob/f8b40b7e2049d67ceebe1d2e90a1029eb64e097d/packages/solid/CHEATSHEET.md).
+Without the skills, Codex Luna at low reasoning failed to compile all three
+practical coding tasks. With the skills, all three implementations passed strict
+TypeScript and the behavior checks.
 
-Solid 2 is a prerelease. When a project's installed version differs, the skills
-use its published typings to resolve API differences.
+The broader skill-only evaluation covered 71 answers. Luna found the relevant
+skill every time, scored **95.8%**, and produced **64/71** answers without a
+confirmed error.
 
 ## Contributing
 
