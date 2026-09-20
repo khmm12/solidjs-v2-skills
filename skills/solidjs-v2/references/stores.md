@@ -100,9 +100,11 @@ const [view] = createOptimisticStore<{ items: readonly Item[] }>(
 <For each={view.items}>{item => <Row item={item} />}</For>
 ```
 
-`For`/`mapArray`, `Object.keys`, `snapshot`, and `deep` follow structural changes
-through wrappers. Inner adds/deletes/reconcile invalidate the outer view.
-Preserve the inner proxy to retain fine-grained identity.
+`For`/`mapArray`, `Object.keys`, and `deep` subscribe through the wrapper to inner
+structure; direct property reads track the corresponding fields. Inner
+adds/deletes/reconcile reach those consumers. `snapshot(view)` reads current
+inner data when called, but is untracked: a memo that only snapshots will not
+rerun for inner writes. Preserve the inner proxy instead of cloning it.
 
 ## Snapshots, merge, omit
 

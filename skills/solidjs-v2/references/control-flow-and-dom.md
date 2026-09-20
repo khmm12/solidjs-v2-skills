@@ -159,6 +159,14 @@ without compiled creation code; server export is a no-op. App code uses normal r
 await, `.pipe`, `.pipeTo`, or `.readable`; mixed consumers throw.
 `renderToStringAsync` is absent from the published exports.
 
+```tsx
+import { renderToStream } from "@solidjs/web";
+const html: string = await renderToStream(() => <App />);
+```
+
+The await already consumes this render and returns a string. Start a separate
+render if another output needs a stream.
+
 `Portal` is client-only: SSR skips its children, async work, and serialization.
 Hydration renders the children fresh after settle. Hoist server-required reads
 above it and put a local `Loading` inside for client-started data:

@@ -76,7 +76,7 @@ reference content.
   for the full exam. Use `--quick` or `--questions A5,B5,B6` for focused runs.
 - `results/` is git-ignored. Answers and grades are checkpointed after each call;
   resume an interrupted run with the same flags plus `--resume <run.json>`.
-  See [evals/PLAN.md](evals/PLAN.md) for isolation, scoring, and batch-size controls.
+  See [evals/README.md](evals/README.md) for requirements, isolation, and scoring.
 
 ## When the Solid prerelease advances
 

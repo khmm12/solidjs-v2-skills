@@ -23,6 +23,10 @@ replaces the local override.
 
 ## Split effects
 
+Import from `solid-js`. The signature is
+`createEffect(compute, apply, options?)`: two required callback arguments, followed
+by optional options. Compute tracks dependencies; apply runs untracked.
+
 ```ts
 createEffect(
   () => ({ title: props.title, count: count() }),
@@ -36,8 +40,9 @@ createEffect(
 
 Compute tracks reads; apply runs untracked and returns a cleanup function or
 `undefined`. `prev` starts as `undefined`; use `(prev = 0) => ...` for a seed.
-The single-callback overload is TS-deprecated (`never`) and throws
-`MISSING_EFFECT_FN` in dev. Dependency selection belongs in compute.
+The single-callback form has no TypeScript overload and throws synchronously
+with `MISSING_EFFECT_FN` in dev. Keep assignments inside apply braces so its
+return value is `undefined`, not the assigned string/number.
 
 Extract store fields in compute, or use `deep(store)` for a plain tracked snapshot:
 
@@ -80,6 +85,10 @@ flow-callback bodies are setup scopes: capturing/destructuring reactive values
 there freezes them and warns. Use `untrack(() => props.title)` for an intentional
 one-time capture.
 
+Components execute once per mount. Updates rerun dependent JSX bindings and
+computations directly, without a component rerender or virtual DOM. An effect's
+compute callback declares dependencies by reading them; there is no dependency array.
+
 ```tsx
 function Counter(props: { value: number }) { return <p>{props.value}</p>; }
 <Counter value={count()} />
@@ -113,8 +122,8 @@ in dev and drops it in production.
 `onSettled` and `createTrackedEffect` are leaf scopes: create primitives before
 entering them and return teardown. `onCleanup` there throws; pending async reads
 and reentrant `flush()` are outside their contract. Use split effects for async.
-`createTrackedEffect` is the rare single-callback tracked effect and may rerun
-in async situations.
+`createTrackedEffect` is deprecated; write new reactive side effects as split
+effects and one-time post-render work as `onSettled`.
 
 ### Lifetime
 
@@ -156,9 +165,11 @@ signal update trails insertion on initial mount and subsequent updates.
 
 Use `Errored`/`createErrorBoundary` around fallible reactive work. An error escaping
 all boundaries halts reactivity: the cause is logged/rethrown and later
-writes/flushes are ignored (`REACTIVITY_HALTED`). `resetErrorHalt` supports tests,
-HMR, and playgrounds; server export is a no-op. Dev `render()`/refresh runtime
-reset a prior halt; production treats it as an app crash.
+writes/flushes are ignored (`REACTIVITY_HALTED`). `resetErrorHalt` is an internal
+test/dev-reload hook re-exported by `solid-js`; it clears the halt flag even in
+the production client build, but does not repair a partially applied application
+graph. The server export is a no-op. Dev `render()`/refresh runtime reset a prior
+halt; production has no automatic recovery.
 
 SSR setters emit a deprecation warning (`SERVER_WRITE`) once per process/category: ordinary signal/store setters alter inert data
 without rerendering; optimistic setters are no-ops, including their callbacks.

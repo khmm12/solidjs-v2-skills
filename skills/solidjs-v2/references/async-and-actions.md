@@ -32,8 +32,9 @@ const [todos] = createStore(() => fetchTodos(), [], { seedLoadingValue: true });
 The loading value is committed until the first real answer, and is the initial
 `prev`. It neither suspends `Loading`, holds a transition, nor sets `isPending`.
 Render first-load UI from that value. After the first answer, normal refetch rules
-apply. `ssrSource: "client"` preserves declared first paint through hydration;
-without a loading value it creates a structural client hole under `Loading`.
+apply. With `ssrSource: "client"`, the server renders the declared loading/seed
+value and hydration starts from that same first paint. Without a loading value,
+the server renders the nearest `Loading` fallback for the structural client hole.
 A bare client source outside a server boundary is a render error.
 
 ## Pending and process state
@@ -84,12 +85,12 @@ const reload = action(function* () {
 
 ## `latest`, `resolve`, `refresh`, `until`
 
-| Need | Call and result |
-|---|---|
-| Read the in-flight value ahead of a transaction | `latest(source)` (may fall back to stale) |
-| Wait for a settled value, including falsy | `await resolve(() => source())` |
-| Re-fetch and wait for its settled answer | `await refresh(source)` |
-| Wait until an authoritative condition is truthy | `await until(predicate, { timeout, signal })` |
+| API | Completes/reads when | Inside an action |
+|---|---|---|
+| `latest(source)` | Reads the in-flight value; may fall back to stale | Escapes the holding transaction |
+| `await resolve(fn)` | First settled value, **including false/undefined/0** | Includes the caller's optimistic view |
+| `await refresh(source)` | A re-ask reaches quiescence | Delivers staged authoritative data, excluding own optimism |
+| `await until(predicate, { timeout, signal })` | First settled **truthy** result; falsy/pending keeps waiting | Reads staged authoritative data, excluding optimism |
 
 Use waiters in imperative code; `resolve`/`until` are outside tracking scopes.
 `resolve` rejects with the original source error when the source rejects.
@@ -122,6 +123,7 @@ const send = action(function* (text: string) {
   const clientId = crypto.randomUUID();
   setMessages(rows => { rows.push({ clientId, text, pending: true }); });
   yield sendMessage({ clientId, text });
+  // resolve would see our optimistic row and could finish before the echo.
   yield until(() => messages.some(row => row.clientId === clientId), { timeout: 10_000 });
 });
 ```
@@ -130,8 +132,6 @@ Use the echoed correlation id as the optimistic and confirmed row key. An alread
 arrived acknowledgment satisfies the predicate immediately. Set a timeout for
 fallible live transports: `TimeoutError`, abort's reason, predicate errors, and
 source rejections reject the waiter and compose with action failure/rollback.
-`resolve` includes the caller's optimistic view; `until` excludes that overlay;
-`refresh` delivers landed truth. All can see staged data inside their transaction.
 
 ## Actions and optimistic state
 
@@ -151,7 +151,9 @@ const save = action(async function* (todo: Todo) {
 `action` wraps a generator/async generator and returns an async function.
 Define it during component setup; invoke it from handlers, effect apply/error
 callbacks, `onSettled`, or other imperative scopes. Calling from a component body
-or computation throws `ACTION_CALLED_IN_OWNED_SCOPE` in dev and risks livelock.
+or computation throws `ACTION_CALLED_IN_OWNED_SCOPE` in dev. This prevents
+livelock: a computation tracking what its action writes can repeatedly start
+replacement transactions before any value commits.
 
 `yield` is the transaction-safe suspension point. After an internal `await`, use
 a bare `yield` before subsequent reactive writes/refresh. Let the action own

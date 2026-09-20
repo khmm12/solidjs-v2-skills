@@ -29,6 +29,9 @@ type ClickHandler = JSX.EventHandler<HTMLButtonElement, MouseEvent>;
 HTML templates `@solidjs/html`, custom renderers `@solidjs/universal`.
 `JSX.ClassValue` describes class object/array forms.
 
+For `getRequestEvent().locals` types, augment `RequestEventLocals` using the
+[request-scope declaration](server-functions.md#configuration-and-request-scope).
+
 ## DOM refs
 
 The published type is recursive:

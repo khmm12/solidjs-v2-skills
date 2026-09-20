@@ -52,18 +52,27 @@ storage can replace the Map when needed, with its own error policy.
 ## Selection projection
 
 ```ts
+import { createProjection, createSignal } from "solid-js";
+
 const [selectedId, setSelectedId] = createSignal<string>();
-const selected = createProjection<Record<string, boolean | string | undefined>>(draft => {
+const selected = createProjection<Record<string, boolean>>(draft => {
+  for (const key of Object.keys(draft)) delete draft[key];
   const id = selectedId();
-  const previous = draft._prev;
-  if (typeof previous === "string") delete draft[previous];
-  if (id !== undefined) draft[id] = true;
-  draft._prev = id;
+  if (id !== undefined) draft[`row:${id}`] = true;
 }, {});
 ```
 
-Rows read `selected[props.id]`; a selection change touches the previous and next
-row. Reserve `_prev` for metadata (use a separate key space if ids can equal it).
+Rows read `selected[\`row:${props.id}\`]`. The draft has at most one marker, so
+clearing it touches only the previous row; adding the new marker touches the next.
+Prefix keys consistently to keep arbitrary ids out of JavaScript's special keys:
+
+```tsx
+function Row(props: { id: string }) {
+  return <button class={{ selected: selected[`row:${props.id}`] === true }}
+    onClick={() => setSelectedId(props.id)}>{props.id}</button>;
+}
+```
+
 For editable prop-derived state use `createSignal(() => props.initial)`.
 
 ## Demand-driven resources
@@ -125,11 +134,12 @@ function createSocketStream(url: () => string) {
 }
 ```
 
-The bridge serves one consumer; add bounded
-backpressure when the source can outpace it. Define close/error handling for the
-actual socket protocol. Cleanup is registered before yield; it unblocks a parked
-await so Solid's iterator `.return()` can complete. Each yield commits a value;
-a generator return ends the stream without emitting. Render under `Loading`.
+The bridge serves one consumer; add bounded backpressure when input can outpace
+it. Define close/error handling for the socket protocol. Register `onCleanup`
+before the first await/yield, while the computation owns the callback. Disposal
+calls `.return()`, but it queues behind a parked await; `finally` alone cannot
+close a silent socket. Cancellation wakes that await so the iterator can unwind.
+Each yield commits a value; return ends without emitting. Render under `Loading`.
 
 ## State ownership and effects
 

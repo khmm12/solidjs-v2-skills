@@ -49,6 +49,9 @@ Move `on(deps, ...)` dependencies into compute; use `{ defer: true }` for deferr
 initial apply. Replace initial-value arguments with default parameters for
 `prev`; the second memo argument is options. Extract reactive fields in compute;
 apply is untracked. Return teardown from apply.
+The single-callback `createEffect` form has no v2 overload and throws in dev.
+`createTrackedEffect` remains deprecated migration support; prefer the split
+effect or `onSettled` according to the intent above.
 
 Call setters/actions from handlers, effect apply/error callbacks, or `onSettled`.
 Owned computation/setup scopes derive state; writes/action calls there throw

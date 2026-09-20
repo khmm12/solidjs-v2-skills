@@ -90,6 +90,8 @@ const user = await invoke(getUser, { signal: abort.signal }, id);
 
 `GET` additionally permits GET and keeps POST accepted; an undeclared GET gets
 405. `withMeta` shallow-merges metadata and composes with GET in either order.
+These wrappers are runtime functions. A function-level `"use server"` transform
+preserves the outer wrapper call; wrappers need no special compiler transform.
 Read it with `getServerFunctionMetadata(fn)` / `isServerFunction(fn)`: their
 registered-symbol brands work across bundles. References expose build-stable
 `id` and `url` (forms/raw fetch). Use these APIs for method/metadata inspection;

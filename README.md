@@ -10,8 +10,9 @@ and reviewing diffs.
 
 > Current target: `solid-js@2.0.0-rc.8` and `@solidjs/web@2.0.0-rc.8`.
 
-Luna low scored **3% without the skill → 51% with it** on 68 rc.8 questions
-across three runs, graded by Terra medium.
+Luna low passed **55/68 questions (80.9%)** with implicit skill discovery,
+graded by Terra medium. This is one full rc.8 run with all judgments valid;
+repeatability has not yet been established.
 
 ## What's included
 
@@ -125,4 +126,4 @@ node evals/run.mjs --quick  # four-question smoke test
 
 Terra grades eight answers per call against a source-backed rubric. Answers and
 scores are saved in `evals/results/`; interrupted runs can resume.
-See [evals/PLAN.md](evals/PLAN.md) for options and methodology.
+See [evals/README.md](evals/README.md) for requirements, options, and methodology.

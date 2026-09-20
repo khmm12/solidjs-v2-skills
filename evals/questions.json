@@ -16,11 +16,12 @@
       "axis": "api",
       "title": "createEffect signature",
       "routed_reference": "reactivity.md",
-      "prompt": "Describe the signature of `createEffect`: how many callbacks it takes, what each one is for, and what happens if you pass a single callback. One short paragraph plus a 3-line example.",
+      "prompt": "Describe the complete `createEffect` signature, including optional arguments: which callbacks track, what may apply return, and how does a one-callback call behave in TypeScript and at runtime in dev? Give a short valid example. Should new code use `createTrackedEffect` instead?",
       "must_include": [
         "createEffect takes TWO functions: a compute and an apply (plus an optional options object)",
-        "compute runs tracked (records reactive deps) and returns a value; apply runs the side effect, is untracked, and may return a cleanup function",
-        "the single-callback form (one function only) is a HARD ERROR — it throws synchronously in dev (MISSING_EFFECT_FN) and the one-argument overload is TS-deprecated (never); it is invalid in 2.0"
+        "compute runs tracked and returns a value; apply runs untracked and returns cleanup or undefined. Example apply callbacks must not return an assigned string/number.",
+        "The single-callback form is invalid: TypeScript has no such overload and dev throws synchronously with MISSING_EFFECT_FN.",
+        "createTrackedEffect is deprecated migration support; new state-following side effects use split createEffect, and one-time post-render work uses onSettled."
       ],
       "must_not": [],
       "source": "reactivity.md"
@@ -43,7 +44,7 @@
       "axis": "api",
       "title": "async data without createResource",
       "routed_reference": "async-and-actions.md",
-      "prompt": "How do you load data asynchronously by id and render it while showing a spinner during loading? Name the primitive and the boundary.",
+      "prompt": "How do you load data asynchronously by id and render it while showing a spinner during loading? Name the primitive and the boundary. Explain whether consumers read a ready value or must check for undefined.",
       "must_include": [
         "Load async data with createMemo(() => fetchX(id())); the computation returns a Promise and consumers read the resolved value through its accessor.",
         "wrap consumers in a <Loading fallback={...}> boundary; loading state is structural, not a T|undefined hole"
@@ -86,11 +87,11 @@
       "axis": "api",
       "title": "uncaught error halts reactivity",
       "routed_reference": "reactivity.md",
-      "prompt": "A fetch inside a memo throws and no `<Errored>` / error boundary catches it. Users report the whole app 'freezes' — later button clicks and state updates do nothing. What happened at the reactive-system level, what is the fix, and can `resetErrorHalt` recover it in production?",
+      "prompt": "An uncaught reactive error escapes every boundary and the app stops updating. Explain the halt, its proper prevention, and the limits of `resetErrorHalt`: is it exported, what can the production client hook actually reset, what resets automatically in dev, and what does the server export do?",
       "must_include": [
-        "an uncaught error that escapes EVERY boundary PERMANENTLY halts reactivity (REACTIVITY_HALTED): it rethrows as an uncaught exception, then all further writes and flushes are silently ignored — it is an app crash with no automatic recovery",
+        "An error escaping every reactive boundary halts scheduling (REACTIVITY_HALTED); later writes/flushes do not update the app and there is no automatic production recovery.",
         "the fix is to wrap the fallible reactive code in an error boundary (createErrorBoundary / <Errored>) — a boundary that handles the error keeps the system alive; you do not defuse the halt",
-        "resetErrorHalt is re-exported from solid-js for tests/dev tooling; the browser render() and refresh runtime revive a halt in dev, but production remains a hard crash and the server export is a no-op"
+        "resetErrorHalt is re-exported by solid-js as an internal test/dev-reload hook. It clears the halt flag even in the production client but cannot repair the damaged application graph; dev render/refresh reset automatically and the server export is a no-op."
       ],
       "must_not": [],
       "source": "reactivity.md"
@@ -114,7 +115,7 @@
       "axis": "api",
       "title": "async-gen action uncaught error + resolve rejection",
       "routed_reference": "async-and-actions.md",
-      "prompt": "Inside an `action(async function* () { … })`, an awaited server call rejects and nothing catches it. Does the app freeze? What happens to the returned promise and to the optimistic writes? Separately: if you `await resolve(() => user())` and the underlying source rejected, what do you get back?",
+      "prompt": "Inside an `action(async function* () { … })`, an awaited server call rejects and nothing catches it. Does the app freeze? What happens to the returned promise and to the optimistic writes? Separately: if you `await resolve(() => user())` and the underlying source rejected, what do you get back? Can the rejection also be handled inside the generator?",
       "must_include": [
         "an uncaught error in an async-generator action REJECTS the returned promise and completes the transition, so the optimistic writes revert and the caller can `.catch` — it does NOT halt reactivity",
         "a try/catch around the yield/await still handles an awaited rejection locally",
@@ -198,10 +199,10 @@
       "axis": "api",
       "title": "server function validation follows directive placement",
       "routed_reference": "server-functions.md",
-      "prompt": "You write `export const getUser = withValidation(userIdSchema, async (id) => { \"use server\"; return db.users.find(id); })`, hoping `withValidation` rejects bad ids before the function body runs. Does that work? Why or why not, and where must the check actually live? Also contrast wrapping an export in a module-level `use server` file.",
+      "prompt": "You write `export const getUser = withValidation(userIdSchema, async (id) => { \"use server\"; return db.users.find(id); })`, hoping `withValidation` rejects bad ids before the function body runs. Does that work? Why or why not, and where must the check actually live? Also contrast wrapping an export in a module-level `use server` file. Explain which code reaches the client and whether TypeScript argument types provide runtime protection.",
       "must_include": [
         "With a function-level directive the raw inner function is registered for HTTP dispatch; a wrapper around its reference does not protect HTTP calls. Validate/authenticate inside that server function.",
-        "Arguments are untrusted regardless of TypeScript types; core supplies no validation schema helper.",
+        "Decoded arguments need server-side validation/authentication regardless of TypeScript types.",
         "A module-level use server file registers each exported evaluated function value, including userland wrappers; those wrappers run on HTTP and direct calls while schemas and wrappers stay server-side. Client output contains bare references."
       ],
       "must_not": [],
@@ -212,10 +213,10 @@
       "axis": "api",
       "title": "server function metadata: .GET / .withOptions removed",
       "routed_reference": "server-functions.md",
-      "prompt": "Can you read `getUser.GET` or call `getUser.withOptions({...})` on a server function reference to check/configure its HTTP method? If not, what replaced them?",
+      "prompt": "Can you read `getUser.GET` or call `getUser.withOptions({...})` on a server function reference? Show the supported declaration, metadata inspection, and session transport APIs. Include allowed HTTP methods/status for undeclared GET, metadata composition across bundles, wrapper/compiler requirements, and rotating auth headers.",
       "must_include": [
         "no — the .GET proxy getter and .withOptions(init) are REMOVED with no compatibility shim",
-        "declare the method with the GET(fn) wrapper (needs no compiler support, since a function-level \"use server\" round-trips the wrapper call) and attach arbitrary metadata with withMeta(fn, meta), which shallow-merges and composes with GET in either order",
+        "GET(fn) declares the method and withMeta(fn, meta) shallow-merges metadata; they compose in either order. These runtime wrappers need no special compiler transform: the function-level use server transform preserves the wrapper call.",
         "GET(fn) additionally permits HTTP GET but does not disable POST; a GET request to a function without GET is rejected with 405",
         "read metadata back structurally with getServerFunctionMetadata(fn) / isServerFunction(fn) — registered-symbol-brand detection, not property sniffing like the old fn.GET",
         "session-dynamic transport concerns (like a rotating auth header) belong in prepareRequest, a client-side hook that runs before every outgoing call — not in declaration-time metadata"
@@ -273,8 +274,7 @@
       "prompt": "Importing from solid-js, which plain and derived createStore/createOptimisticStore overloads accept shallow options? What are their option types and are derived optimistic stores refreshable?",
       "must_include": [
         "Both plain createStore(initial, options?) and createOptimisticStore(initial, options?) accept StoreOptions, including name and shallow.",
-        "Both derived forms take derive, seed, ProjectionOptions; these include key and shallow, and derived optimistic stores are refreshable.",
-        "Published solid-js client/server and signals typings agree on the option surfaces."
+        "Both derived forms take derive, seed, ProjectionOptions; these include key and shallow, and derived optimistic stores are refreshable."
       ],
       "must_not": [],
       "source": "stores.md"
@@ -284,7 +284,7 @@
       "axis": "api",
       "title": "recursive JSX refs and applyRef typing",
       "routed_reference": "typescript-setup.md",
-      "prompt": "A renderer library forwards nested Solid DOM refs. What shapes does `JSX.Ref<T>` allow, what is the generic `applyRef` signature, and which argument determines the concrete DOM element subtype?",
+      "prompt": "A renderer library forwards nested Solid DOM refs. What shapes does `JSX.Ref<T>` allow, what is the generic `applyRef` signature, and which argument determines the concrete DOM element subtype? Explain the callback-inference constraint and the idiomatic way for the library to apply refs.",
       "must_include": [
         "JSX.Ref<T> is recursive: a direct T, a RefCallback<T>, undefined, or an array of Ref<T>, so nested ref arrays type-check",
         "applyRef<T extends Element = Element> accepts one callback or an array of callbacks whose element parameter is NoInfer<T>, plus element: T, and returns void",
@@ -311,12 +311,12 @@
       "axis": "api",
       "title": "built-in no-JS flash and redirect protocol",
       "routed_reference": "server-functions.md",
-      "prompt": "A browser submits a Solid server-function form with JavaScript disabled. What does core do by default with truthy and falsy ordinary returned/thrown outcomes versus a returned/thrown `Response`, where does it redirect, and how can an integration replay or disable this behavior?",
+      "prompt": "A browser submits a Solid server-function form with JavaScript disabled. What does core do by default with truthy and falsy ordinary returned/thrown outcomes versus a returned/thrown `Response`, where does it redirect, and how can an integration replay or disable this behavior? Include helper export locations, async decoding/cleanup, cookie secrecy and size limits, and how scripted/direct HTTP differs.",
       "must_include": [
         "The built-in createNoJSHandler flashes ordinary non-Response returned/thrown outcomes, including 0, false, empty string and null, then redirects to referer or base/fallback with 303.",
         "undefined redirects without a flash; other falsy values are preserved.",
         "a returned or thrown Response is never flashed and preserves its headers and Location plus a valid redirect status; without a Location it redirects back",
-        "FLASH_COOKIE, hasFlashCookie, and clearFlashCookie are isomorphic exports; encodeFlashCookie/decodeFlashCookie/createNoJSHandler are server exports, and the cookie must be cleared on the following render even if decode fails",
+        "FLASH_COOKIE, hasFlashCookie, and clearFlashCookie are available from @solidjs/web/server-functions (isomorphic); encodeFlashCookie/decodeFlashCookie/createNoJSHandler come from @solidjs/web/server-functions/server. Clear the cookie on the following render even if decode fails.",
         "A custom handleNoJS can change application form behavior; per-request overrides take priority and server handleNoJS: null disables the convention.",
         "Flash has a roughly 4 KB ceiling; FormData/URLSearchParams become pairs and files are dropped. Oversized outcomes can degrade to truncated: true, which should be rendered as bounded status.",
         "Flash is AES-GCM encrypted with a configured deployment secret or bundler-injected fallback; without either secret the outcome is withheld while the form still redirects.",
@@ -387,7 +387,7 @@
       "axis": "api",
       "title": "server-function security defaults",
       "routed_reference": "server-functions.md",
-      "prompt": "What happens to a plain Error thrown by a production server function, how do you intentionally expose a safe client-facing error, and what same-origin/CSRF protection does the handler apply by default?",
+      "prompt": "What happens to a plain Error thrown by a production server function, how do you intentionally expose a safe client-facing error, and what same-origin/CSRF protection does the handler apply by default? What selects development versus production policy, and how should an integration recognize intentionally safe errors?",
       "must_include": [
         "outside the development build condition, plain thrown values are sanitized to a generic Error(\"Internal Server Error\") without the original message, stack, or own properties; the build variant, not NODE_ENV, selects this",
         "use respond(...) / a thrown envelope, or markSafeError(error) from @solidjs/web for intentional client-facing error content; isSafeError is the cross-bundle-safe check",
@@ -508,9 +508,9 @@
       "axis": "pattern",
       "title": "stream a socket through an async-gen memo and clean it up",
       "routed_reference": "patterns.md",
-      "prompt": "Stream messages from a WebSocket through `createMemo(async function* () { … })` so each message updates the accessor. How do you tear the socket down on dispose, and why isn't a `try/finally` inside the generator enough?",
+      "prompt": "Stream messages from a WebSocket through `createMemo(async function* () { … })` so each message updates the accessor. How do you tear the socket down on dispose, and why isn't a `try/finally` inside the generator enough? Explain what Solid does to the iterator and what happens to ownership after suspension.",
       "must_include": [
-        "yield* a bridge over the socket's messages so each message commits; register the teardown with onCleanup synchronously BEFORE the first await/yield — after a suspension point there is no owner (NO_OWNER_CLEANUP) and the cleanup never runs",
+        "Each yielded message commits as the memo value. Register teardown with onCleanup synchronously before the first await/yield, because owner context is absent after suspension.",
         "the onCleanup must actively close the socket / cancel the source — this both frees it AND unblocks the parked await so the generator can unwind",
         "try/finally is NOT reliable: on dispose Solid DOES call .return() on the iterator, but a generator parked on an external await won't unwind — .return() queues behind that await and finally won't run until it settles, which for a silent socket is never"
       ],
@@ -549,11 +549,11 @@
       "axis": "pattern",
       "title": "store-in-store structural tracking",
       "routed_reference": "stores.md",
-      "prompt": "A derived store returns an inner store and For renders outer.items. What tracks inner reconcile/add/delete through this wrapper: For/mapArray, Object.keys, snapshot, and deep? Should the inner store be cloned?",
+      "prompt": "A derived store wraps an inner store and For renders outer.items. Compare subscriptions for For/mapArray, Object.keys, deep, direct field reads, and a memo that only calls snapshot. After inner reconcile/add/delete, what stays current, and should the inner store be cloned?",
       "must_include": [
-        "structural tracking chains through the outer wrapper to the inner store, so reconcile/add/delete invalidates <For>/mapArray and Object.keys as well as snapshot/deep",
-        "Structural consumers and direct property reads stay consistent.",
-        "do NOT clone the inner store as a workaround; preserve the fine-grained store view"
+        "For/mapArray, Object.keys, and deep track structural changes through the wrapper; inner reconcile/add/delete reaches those consumers.",
+        "Direct field reads track their fields. snapshot reads current inner data when called but does not subscribe: a memo that only snapshots does not rerun for inner writes.",
+        "Preserve the inner store proxy instead of cloning it, to retain the fine-grained live view."
       ],
       "must_not": [],
       "source": "stores.md"
@@ -593,7 +593,7 @@
       "axis": "pattern",
       "title": "Portal is a client-only island",
       "routed_reference": "control-flow-and-dom.md",
-      "prompt": "An app wraps a dialog in `<Portal mount={modalRoot}><Loading fallback={<Spinner />}><Dialog /></Loading></Portal>`. Does the server render the Dialog's markup? Does async work started inside the portal show up in an ancestor Loading boundary outside the portal? Where should a read that must happen on the server live?",
+      "prompt": "An app wraps a dialog in `<Portal mount={modalRoot}><Loading fallback={<Spinner />}><Dialog /></Loading></Portal>`. Does the server render the Dialog's markup? Does async work started inside the portal show up in an ancestor Loading boundary outside the portal? Where should a read that must happen on the server live? How do already initialized ancestor loading boundaries handle async work discovered there?",
       "must_include": [
         "the server renders nothing for <Portal> — its children never evaluate, no async starts inside it, and nothing is serialized for that subtree",
         "the portal's children render fresh on the client (under hydration nothing is claimed for them), so async started inside the portal begins on the client — it is not server-fetched",
@@ -666,7 +666,7 @@
       "axis": "pattern",
       "title": "SSR dynamic/lazy shell gating",
       "routed_reference": "control-flow-and-dom.md",
-      "prompt": "In streaming SSR, compare pending dynamic() and lazy() inside Loading. Which holds the first shell, what does dynamic deferStream do, and what happens without a boundary?",
+      "prompt": "In streaming SSR, compare pending dynamic() and lazy() inside Loading. Which holds the first shell, what does dynamic deferStream do, and what happens without a boundary? Include data discovered by lazy code and lazy components mounted after the shell has flushed.",
       "must_include": [
         "Pending dynamic under Loading streams behind its fallback by default.",
         "dynamic(source, { deferStream: true }) holds the first shell until the source settles; the client ignores this option.",
@@ -681,7 +681,7 @@
       "axis": "pattern",
       "title": "experimental server component setup and ownership",
       "routed_reference": "server-components.md",
-      "prompt": "Show the current shape for a server component with a client-owned slot: how is it declared and consumed, what must run before hydrate/render, which Vite flag enables it, what state survives refetch, what happens to app Context at the server-component root, and what DOM seam must CSS account for?",
+      "prompt": "Show the current shape for a server component with a client-owned slot: how is it declared and consumed, what must run before hydrate/render, which Vite flag enables it, what state survives refetch, what happens to app Context at the server-component root, and what DOM seam must CSS account for? Distinguish turnkey SSR wiring from authored entries and describe identity during slot reordering.",
       "must_include": [
         "a server component is a component function returned by a server function; the client consumes its promise with dynamic(() => serverFn(...)) and passes client-owned positions as Slot props",
         "call installServerComponents() explicitly before hydrate() or render(); a bare import is insufficient because the package is side-effect-free",
@@ -699,7 +699,7 @@
       "axis": "react",
       "title": "props are not destructured",
       "routed_reference": "reactivity.md",
-      "prompt": "Write a component that receives a `title` prop and renders it in an <h1>. Call out any reactivity pitfall a React developer would hit.",
+      "prompt": "Write a component that receives a `title` prop and renders it in an <h1>. Call out any reactivity pitfall a React developer would hit. Explain parameter destructuring versus top-level captures and the dev diagnostic.",
       "must_include": [
         "read props.title INSIDE the JSX — function Good(props) { return <h1>{props.title}</h1> }",
         "do NOT destructure props in the parameter list and do NOT read props at the top level of the body — it captures once, goes stale, and warns STRICT_READ_UNTRACKED"
@@ -712,7 +712,7 @@
       "axis": "react",
       "title": "component runs once, no re-render",
       "routed_reference": "reactivity.md",
-      "prompt": "In Solid 2.0, how many times does a component function execute, and when do effects re-run relative to 'renders'? Contrast explicitly with React's re-render-on-every-update model.",
+      "prompt": "In Solid 2.0, how many times does a component function execute, and when do effects re-run relative to 'renders'? Contrast explicitly with React's re-render-on-every-update model. Address virtual DOM and dependency arrays.",
       "must_include": [
         "the component function runs exactly ONCE — there is no re-render and no virtual DOM",
         "effects re-run only when their tracked dependencies change; the effect's compute phase IS the dependency declaration (no deps array)"
@@ -765,7 +765,7 @@
       "axis": "v1",
       "title": "batch removed",
       "routed_reference": "reactivity.md",
-      "prompt": "Batch these two writes together in Solid 2.0: `setA(1); setB(2);`. Show the idiomatic code.",
+      "prompt": "Batch these two writes together in Solid 2.0: `setA(1); setB(2);`. Show the idiomatic code. Is the old batching API available, and when would an explicit synchronous flush be needed?",
       "must_include": [
         "batch() does NOT exist in 2.0 — batching is the default, so you just write setA(1); setB(2); with no wrapper",
         "flush() is only needed if you must synchronously read your own writes right after"
@@ -778,7 +778,7 @@
       "axis": "v1",
       "title": "onMount equivalent",
       "routed_reference": "reactivity.md",
-      "prompt": "What is the Solid 2.0 equivalent of `onMount` for component setup that adds a window resize listener and removes it on cleanup? Show it.",
+      "prompt": "What is the Solid 2.0 equivalent of `onMount` for component setup that adds a window resize listener and removes it on cleanup? Show it. Explain the callback's ownership and the restrictions on creating primitives or registering cleanup inside it.",
       "must_include": [
         "use onSettled(() => { ...; return cleanup }) in the component body — it replaces onMount and, in this owned scope, honors a returned cleanup (runs on owner disposal)",
         "onSettled is a leaf owner: you cannot create reactive primitives or call onCleanup inside it — return a cleanup function instead"
@@ -791,7 +791,7 @@
       "axis": "v1",
       "title": "imports moved",
       "routed_reference": "typescript-setup.md",
-      "prompt": "In Solid 2.0, where do `render`, `Portal`, and `createStore` come from, what replaced `classList`, and what compiler packages replaced `babel-preset-solid`?",
+      "prompt": "In Solid 2.0, where do `render`, `Portal`, and `createStore` come from, what replaced `classList`, and what compiler packages replaced `babel-preset-solid`? Include the Vite plugin's default compiler.",
       "must_include": [
         "render and Portal import from '@solidjs/web' (NOT solid-js/web)",
         "createStore (and other store APIs) import from 'solid-js' (NOT solid-js/store)",
@@ -806,13 +806,14 @@
       "axis": "v1",
       "title": "createSelector replacement",
       "routed_reference": "stores.md",
-      "prompt": "You need a derived store that marks the selected row id without notifying every row in the list. Which 1.x API did this, and what replaces it in 2.0?",
+      "prompt": "You need a derived store that marks the selected row id without notifying every row in the list. Which 1.x API did this, and what replaces it in 2.0? Is the old API still exported? Explain the replacement's mutability and show typed code for changing selection and rendering a selectable row with current v2 JSX. Row IDs can be arbitrary strings, including an empty string or a metadata-like name.",
       "must_include": [
         "the 1.x API was createSelector — it is gone in 2.0",
-        "the replacement is createProjection (a readonly derived store whose derive fn mutates a draft), which updates fine-grained without notifying the whole collection"
+        "the replacement is createProjection (a readonly derived store whose derive fn mutates a draft), which updates fine-grained without notifying the whole collection",
+        "The typed example changes only the previous and next row markers, supports arbitrary string ids without metadata-key collisions, and all draft fields fit the declared type. A consistent prefixed marker key is one valid approach. Row JSX uses reactive props reads and the class object/array form, not classList."
       ],
       "must_not": [],
-      "source": "stores.md"
+      "source": "stores.md; patterns.md — Selection projection"
     },
     {
       "id": "D5",
@@ -832,7 +833,7 @@
       "axis": "api",
       "title": "awaitable refresh",
       "routed_reference": "async-and-actions.md",
-      "prompt": "What does await refresh(target) return for an accessor or nested store node? What happens if another refresh supersedes it, the fetch fails, or the call is yielded inside an optimistic action?",
+      "prompt": "What does await refresh(target) return for an accessor or nested store node? What happens if another refresh supersedes it, the fetch fails, or the call is yielded inside an optimistic action? Include pending visibility and the behavior when the returned Promise is ignored.",
       "must_include": [
         "refresh returns a Promise for the next quiescent state; superseding invalidations fold into the wait and deliver whatever finally settles.",
         "An accessor yields its settled value; a store yields the passed node, while a nested node refresh reruns the whole family derive.",
@@ -847,7 +848,7 @@
       "axis": "api",
       "title": "until live acknowledgment",
       "routed_reference": "async-and-actions.md",
-      "prompt": "How do you keep an optimistic socket-send action open until the echoed row appears in its live store? Contrast until with resolve and awaited refresh, and handle a lost connection.",
+      "prompt": "How do you keep an optimistic socket-send action open until the echoed row appears in its live store? Contrast until with resolve and awaited refresh, and handle a lost connection. Cover pending/falsy values, already-arrived echoes, optimistic versus authoritative reads, and timeout/abort/source-error behavior.",
       "must_include": [
         "Yield until with a predicate directly over authoritative source state and an echoed correlation id; use the same key for optimistic and confirmed rows.",
         "until resolves the first settled truthy value, waits through falsy/pending values, and inside actions excludes optimistic overlays while reading staged authoritative data.",
@@ -876,7 +877,7 @@
       "axis": "pattern",
       "title": "event binding and ref arrays",
       "routed_reference": "control-flow-and-dom.md",
-      "prompt": "A button uses onClick={enabled() ? save : explain}, and ref={[button, focus]} should assign a local button variable. Give reactive and correctly assigning v2 forms.",
+      "prompt": "A button uses onClick={enabled() ? save : explain}, and ref={[button, focus]} should assign a local button variable. Give reactive and correctly assigning v2 forms. Contrast ordinary handler binding with a changed handler arriving through spread props.",
       "must_include": [
         "Event binding is evaluated once; make the decision inside a stable callback such as event => (enabled() ? save : explain)(event).",
         "Use an assignment callback in the ref array: el => { button = el; }; bare variable assignment rewriting belongs to a single ref={button}.",
@@ -890,7 +891,7 @@
       "axis": "pattern",
       "title": "SSR state isolation",
       "routed_reference": "patterns.md",
-      "prompt": "Where should shared browser state and SSR per-user state live in a Solid app?",
+      "prompt": "Where should browser-wide shared state, SSR per-user state, and per-form/widget state live in a Solid app? Who manages a deliberately detached reactive root's lifetime?",
       "must_include": [
         "Module state can serve browser-wide shared data; SSR user data uses per-request instances/context to isolate requests.",
         "Context also scopes per-form/widget services; a detached computation root has an explicitly managed lifetime."
@@ -917,7 +918,7 @@
       "axis": "api",
       "title": "server handler integration bounds",
       "routed_reference": "server-functions.md",
-      "prompt": "Which hooks can replace server execution and client fetch, and what default limits bound decoded server function arguments?",
+      "prompt": "Which hooks can replace server execution and client fetch, and what default limits bound decoded server function arguments? Which trust-boundary checks remain necessary?",
       "must_include": [
         "wrapInvocation wraps server execution and client fetch(address, init) can replace transport.",
         "Default bodySizeLimit is 1 MiB and maxArguments is 1000; retain server-side validation and origin protection."
@@ -956,11 +957,12 @@
       "axis": "pattern",
       "title": "SWR keys and cancellable push streams",
       "routed_reference": "patterns.md",
-      "prompt": "Build a cache-first query with explicit refresh status and a push-to-async-iterator adapter. How should composite keys compare, and how does cleanup handle values between pulls and a consumer parked on await?",
+      "prompt": "Implement a cache-first query helper with explicit refresh status and a push-to-async-iterator adapter. Provide TypeScript code for both helpers, including imports and cleanup. How should composite keys compare, and how does cleanup handle values between pulls and a consumer parked on await? State the bridge's consumer/buffer limits and what to change when input outpaces consumption.",
       "must_include": [
         "Carry the key and refresh status in query state; compare primitive keys with Object.is or provide a comparator for composite keys, and keep cache key identity stable too.",
         "Buffer values between pulls, consume queued values before parking, and make cancellation unsubscribe and wake the pending consumer.",
-        "The example bridge serves one consumer with an unbounded buffer; add bounded backpressure when sustained input can outrun consumption."
+        "Make consumer and buffer limits explicit. A single-consumer unbounded buffer needs backpressure when input can outpace consumption; a bounded design with an explicit overflow policy is also acceptable.",
+        "Provide implementations of both helpers, including imports, synchronous onCleanup registration, cancellation of superseded fetch work, and a facade that exposes data, refresh state, and refresh()."
       ],
       "must_not": [],
       "source": "patterns.md — Streaming query; Streaming a socket"
