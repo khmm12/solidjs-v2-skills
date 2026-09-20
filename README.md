@@ -1,55 +1,26 @@
-# solidjs-v2-skills
+# SolidJS v2 skills
 
-SolidJS 2.0 skills for coding agents, checked against published packages and
-upstream source.
+Skills for building SolidJS 2.0 applications with coding agents.
 
-Solid 2.0 changed enough of the framework that code based on Solid 1.x or
-React habits can look plausible and still be wrong. This repository gives
-agents a verified v2 reference for writing new code, migrating 1.x projects,
-and reviewing diffs.
+Write reactive components, handle async data and optimistic updates, migrate
+Solid 1.x code, or review a diff. The collection includes focused references and
+TypeScript examples checked against published Solid packages.
 
-> Current target: `solid-js@2.0.0-rc.8` and `@solidjs/web@2.0.0-rc.8`.
+Works with Codex, Claude Code, and other agents supported by
+[`npx skills`](https://github.com/vercel-labs/skills#supported-agents).
 
-Luna low passed **55/68 questions (80.9%)** with implicit skill discovery,
-graded by Terra medium. This is one full rc.8 run with all judgments valid;
-repeatability has not yet been established.
-
-## What's included
-
-| skill | use it for |
-|---|---|
-| `solidjs-v2` | Writing and editing Solid 2.0 code. Covers reactivity, async data and actions, stores, control flow, DOM, server functions, experimental server components, and TypeScript. |
-| `solidjs-v2-migration` | Moving a Solid 1.x codebase or file to 2.0. Includes a four-pass workflow and a rename/removal map with recipes. |
-| `solidjs-v2-reviewer` | Reviewing Solid 2.0 diffs for React habits, 1.x APIs, and reactivity bugs. Includes a concise behavior checklist and evidence-based findings. |
-
-The three skills share the same reference files across Codex, Claude Code, and
-`npx skills`; there are no host-specific copies to drift apart. Each skill
-checks the installed Solid major first and refuses to apply v2 rules to a 1.x
-project.
+**Target:** `solid-js@2.0.0-rc.8` and `@solidjs/web@2.0.0-rc.8`.
 
 ## Install
 
-Choose one installation method. Installing the same skills through several
-hosts will load duplicate copies.
-
-### `npx skills` (recommended)
-
-[`vercel-labs/skills`](https://github.com/vercel-labs/skills) works with Claude
-Code and many other agents.
+Run this in your project and choose the skills and agents to install:
 
 ```sh
 npx skills add khmm12/solidjs-v2-skills
 ```
 
-Add `-g` for a global install, or install one skill only:
-
-```sh
-npx skills add khmm12/solidjs-v2-skills -g
-npx skills add khmm12/solidjs-v2-skills@solidjs-v2
-```
-
-From a local clone, use `npx skills add ./solidjs-v2-skills`. Update later with
-`npx skills update`.
+Add `-g` to make the skills available across projects. Choose one installation
+method per agent to avoid duplicate copies.
 
 <details>
 <summary>Install as a Codex plugin</summary>
@@ -59,71 +30,98 @@ codex plugin marketplace add khmm12/solidjs-v2-skills
 codex plugin add solidjs-v2-skills@solidjs-v2-skills
 ```
 
-For a local clone:
-
-```sh
-codex plugin marketplace add /absolute/path/to/solidjs-v2-skills
-codex plugin add solidjs-v2-skills@solidjs-v2-skills
-```
-
-Start a new Codex session after installation. Refresh the Git-backed
-marketplace with:
+Start a new Codex session after installation. To refresh the marketplace:
 
 ```sh
 codex plugin marketplace upgrade solidjs-v2-skills
 ```
+
+For a local clone, pass its absolute path to `codex plugin marketplace add`.
 
 </details>
 
 <details>
 <summary>Install as a Claude Code plugin</summary>
 
+Run these commands inside Claude Code:
+
 ```text
 /plugin marketplace add khmm12/solidjs-v2-skills
 /plugin install solidjs-v2-skills@solidjs-v2-skills
 ```
 
-For a local clone, replace the repository name in the first command with its
-absolute path. Plugin skills are namespaced as
-`solidjs-v2-skills:solidjs-v2`; auto-triggering is unchanged.
+For a local clone, replace the repository name with its absolute path.
 
 </details>
 
 <details>
-<summary>Install as personal symlinks</summary>
+<summary>Install individual skills, use a local clone, or update</summary>
+
+Install one skill:
 
 ```sh
-git clone https://github.com/khmm12/solidjs-v2-skills.git
-cd solidjs-v2-skills
-for skill in solidjs-v2 solidjs-v2-migration solidjs-v2-reviewer; do
-  ln -sfn "$(pwd)/skills/$skill" ~/.claude/skills/$skill
-done
+npx skills add khmm12/solidjs-v2-skills --skill solidjs-v2
 ```
 
-This is unnamespaced and updates immediately with `git pull`.
+Install from a local clone:
+
+```sh
+npx skills add ./solidjs-v2-skills
+```
+
+Update skills installed through `npx skills`:
+
+```sh
+npx skills update
+```
 
 </details>
 
+## Skills
+
+| Skill | Use it for |
+|---|---|
+| [solidjs-v2](skills/solidjs-v2/SKILL.md) | Writing Solid 2 code: reactivity, stores, async data, actions, DOM, and server rendering. |
+| [solidjs-v2-migration](skills/solidjs-v2-migration/SKILL.md) | Converting Solid 1.x code, with an API rename map and migration recipes. |
+| [solidjs-v2-reviewer](skills/solidjs-v2-reviewer/SKILL.md) | Reviewing diffs for reactivity bugs, stale APIs, and ownership or cleanup issues. |
+
+The same skill folders work across hosts. Before editing a project, each skill
+checks the installed Solid major. A 1.x project keeps its existing conventions
+unless you ask for a migration.
+
+## Usage
+
+Describe the task in your agent as usual. For example:
+
+- "Add a live message feed with a loading state and cleanup on channel changes."
+- "Migrate this Solid 1.x component to Solid 2."
+- "Review this diff for Solid 2 reactivity bugs."
+
+The agent selects the relevant skill from the task. You can also request a skill
+by name.
+
 ## Version and sources
 
-The references are distilled from Solid's `documentation/solid-2.0/`
-(MIGRATION.md and RFC 01–12) and the official `packages/solid/CHEATSHEET.md` at
-[`solidjs/solid@f8b40b7e`](https://github.com/solidjs/solid/tree/f8b40b7e2049d67ceebe1d2e90a1029eb64e097d).
-The [upstream cheatsheet](https://github.com/solidjs/solid/blob/f8b40b7e2049d67ceebe1d2e90a1029eb64e097d/packages/solid/CHEATSHEET.md)
-is source material rather than a bundled duplicate. API claims use published rc.8
-typings first, then upstream sources and tests.
+The references target Solid 2.0 rc.8. API signatures are checked against published
+typings; behavior is checked against upstream source and tests. The source anchor
+is [solidjs/solid at f8b40b7e](https://github.com/solidjs/solid/tree/f8b40b7e2049d67ceebe1d2e90a1029eb64e097d),
+including the [Solid 2 cheatsheet](https://github.com/solidjs/solid/blob/f8b40b7e2049d67ceebe1d2e90a1029eb64e097d/packages/solid/CHEATSHEET.md).
 
-Solid 2.0 is still a prerelease. Before teaching a new API, the maintenance
-workflow also checks pending upstream changesets. See [AGENTS.md](AGENTS.md)
-for the full update procedure.
+Solid 2 is a prerelease. When a project's installed version differs, the skills
+use its published typings to resolve API differences.
 
-## Run the exam
+## Contributing
+
+[Open an issue](https://github.com/khmm12/solidjs-v2-skills/issues) for an incorrect
+example, missing pattern, or installation problem. Include the package version
+and a small reproduction.
+
+For reference changes, update the corresponding evaluation question and follow
+the [verification conventions](AGENTS.md). Run the offline checks with:
 
 ```sh
-node evals/run.mjs --n 3    # three runs: Luna low, base vs with-skill
-node evals/run.mjs --quick  # four-question smoke test
+node evals/run.test.mjs
 ```
 
-Terra grades eight answers per call against a source-backed rubric. Answers and
-scores are saved in `evals/results/`; interrupted runs can resume.
-See [evals/README.md](evals/README.md) for requirements, options, and methodology.
+The [evaluation guide](evals/README.md) covers model comparisons, scoring,
+and focused runs.

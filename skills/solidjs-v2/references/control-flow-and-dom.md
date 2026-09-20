@@ -7,6 +7,10 @@ Control-flow components come from `solid-js`; `render`, `hydrate`, `Portal`,
 
 ## Lists
 
+JSX tracks its expressions: render a changing value as `<span>{label()}</span>`.
+Native element children take renderable values, not functions. Render callbacks
+are a separate component contract: `For` takes `{item => <Row item={item} />}`.
+
 | `For` mode | Item | Index |
 |---|---|---|
 | default / `keyed={true}` (identity) | raw value | accessor |
@@ -14,10 +18,20 @@ Control-flow components come from `solid-js`; `render`, `hydrate`, `Portal`,
 | `keyed={row => row.id}` (custom key) | accessor | accessor |
 
 ```tsx
-<For each={rows}>{(row, i) => <Row row={row} index={i()} />}</For>
-<For each={rows} keyed={false}>{(row, i) => <Row row={row()} index={i} />}</For>
-<For each={rows} keyed={row => row.id}>{row => <Row row={row()} />}</For>
+import { For } from "solid-js";
+
+function Lists(props: { rows: readonly { id: string; name: string }[] }) {
+  return <>
+    <ul><For each={props.rows}>{(row, i) => <li>{i()}: {row.name}</li>}</For></ul>
+    <ul><For each={props.rows} keyed={false}>{(row, i) => <li>{i}: {row().name}</li>}</For></ul>
+    <ul><For each={props.rows} keyed={row => row.id}>{(row, i) => <li>{i()}: {row().name}</li>}</For></ul>
+  </>;
+}
 ```
+
+`each` takes an array value: `each={rows()}` for a signal/memo accessor,
+`each={rows}` for a store array. Check the collection's declared type; the
+keying mode changes callback arguments, not the type of `each`.
 
 Use a literal boolean or key function so the callback type stays definite.
 Read accessors in JSX/memos/effect compute: the callback body is an owned setup
@@ -101,11 +115,14 @@ a call-site literal. The bundler normally supplies the third argument.
 Hydration matches preloaded modules by positional hydration id, including
 `import.meta.glob` callsites without that argument.
 
-On the server, a missing callsite URL uses the module's injected `$$moduleUrl`
-for deferred asset registration; `Lazy.moduleUrl` itself remains undefined.
+On the server, a missing callsite URL waits for the import and uses the module's
+injected `$$moduleUrl` for deferred asset registration; `Lazy.moduleUrl` itself
+remains undefined, even after that import resolves.
 If both identities are absent, SSR renders and warns about late client loading.
-A supplied URL resolves through the request asset manifest, registering preload
-hints; outside a request or on a manifest miss it stays the raw specifier.
+A supplied callsite URL makes the `Lazy.moduleUrl` getter resolve through the
+request asset manifest and register modulepreload on access; without that
+callsite URL the getter does neither. Outside a request or on a manifest miss
+it returns the supplied raw specifier.
 `NoHydration` still renders lazy content; reading its resolved URL can preload
 code for separately mounted islands.
 
@@ -115,6 +132,11 @@ Use lowercase HTML attributes (`tabindex`, `readonly`) and camelCase handlers
 (`onClick`). Boolean attributes use presence/absence. Stateful properties retain
 platform forms: `value`, `defaultValue`, `checked`, `defaultChecked`, `selected`,
 `defaultSelected`, `muted`, `defaultMuted`. Use defaults for initial field state.
+
+ARIA true/false states are strings, not HTML boolean attributes:
+`aria-pressed={selected() ? "true" : "false"}`. Boolean `false` removes the
+attribute; the string `"false"` exposes an explicit false state. Published rc.8
+JSX types reject boolean `true` for these enumerated ARIA attributes.
 
 ```tsx
 <div class={["card", props.class, { active: active() }]} />
@@ -162,10 +184,14 @@ await, `.pipe`, `.pipeTo`, or `.readable`; mixed consumers throw.
 ```tsx
 import { renderToStream } from "@solidjs/web";
 const html: string = await renderToStream(() => <App />);
+// Separate render, retained without awaiting so it can stream:
+const stream = renderToStream(() => <App />);
+await stream.pipeTo(writable);
 ```
 
-The await already consumes this render and returns a string. Start a separate
-render if another output needs a stream.
+`writable` is the destination `WritableStream`. Awaiting the first render returns
+a string; awaiting `pipeTo` waits for the second render's delivery. Each render
+has exactly one consumer.
 
 `Portal` is client-only: SSR skips its children, async work, and serialization.
 Hydration renders the children fresh after settle. Hoist server-required reads
@@ -177,5 +203,6 @@ above it and put a local `Loading` inside for client-started data:
 </Portal>
 ```
 
-Already initialized ancestor boundaries treat this late work as ordinary pending;
-the local boundary provides its initial fallback.
+Already initialized ancestor boundaries observe this late work as ordinary
+pending, without returning to initial fallback. A portal is not an isolation
+barrier for ancestor pending; its local boundary provides the initial fallback.

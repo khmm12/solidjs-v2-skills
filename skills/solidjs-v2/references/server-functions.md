@@ -8,6 +8,8 @@ integration and mount the runtime handler; a router or SolidStart is optional.
 ## Directive and trust boundary
 
 ```ts
+import { respond } from "@solidjs/web";
+
 export async function getUser(id: string) {
   "use server";
   if (typeof id !== "string") throw respond({ error: "bad id" }, { status: 400 });
@@ -48,7 +50,7 @@ The default endpoint is `/_server`. Handler hooks include `createEvent`,
 
 Same-origin CSRF checking is enabled by default. Requests missing origin evidence
 are rejected unless `allowRequestsWithoutOriginCheck` is explicitly enabled.
-Keep this protection, or supply an equivalent trusted layer. Argument payloads
+Keep this protection; set `csrf: false` only behind an equivalent trusted layer. Argument payloads
 are bounded by `bodySizeLimit` (1 MiB default) and `maxArguments` (1000 default).
 
 `getRequestEvent()` from `@solidjs/web` returns `{ request, locals }`;
@@ -60,12 +62,14 @@ Direct SSR calls execute in-process under a derived event marked `serverOnly`.
 provideRequestEvent({ request, locals: {} }, () => handleServerFunctionRequest(request));
 ```
 
-Augment locals in a declaration that is itself a module:
+Augment locals in a declaration that is itself a module. Any top-level import
+(including `import type`) or export supplies that boundary; add `export {}` when
+the file otherwise has neither:
 
 ```ts
 export {};
 declare module "@solidjs/web" {
-  interface RequestEventLocals { user: User; }
+  interface RequestEventLocals { user: { id: string }; }
 }
 ```
 
@@ -89,7 +93,8 @@ const user = await invoke(getUser, { signal: abort.signal }, id);
 ```
 
 `GET` additionally permits GET and keeps POST accepted; an undeclared GET gets
-405. `withMeta` shallow-merges metadata and composes with GET in either order.
+405. Plain client references send POST; GET-wrapped references send GET, with a
+POST fallback for oversized argument URLs. `withMeta` shallow-merges metadata and composes with GET in either order.
 These wrappers are runtime functions. A function-level `"use server"` transform
 preserves the outer wrapper call; wrappers need no special compiler transform.
 Read it with `getServerFunctionMetadata(fn)` / `isServerFunction(fn)`: their
@@ -102,10 +107,14 @@ its `RequestInit`. Compose one hook for rotating credentials and session policy;
 use `new Headers(init.headers)` when adding headers to preserve every HeadersInit
 shape. Client `fetch(address, init)` can replace the transport.
 
-`invoke` accepts only `signal`, `keepalive`, and `priority` (`high`/`low`/`auto`).
+The call shape is `invoke(fn, options, ...args)`: the options argument is required;
+pass `{}` when it has no fields. Its only fields are optional `signal`, `keepalive`,
+and `priority` (`high`/`low`/`auto`).
+The remaining arguments retain the target function's parameter types and
+requiredness: for `getUser(id: string)`, call `invoke(getUser, {}, id)`.
 Timeouts compose through `AbortSignal.timeout`/`any`; headers/method belong to
-the longer-lived APIs above. Abort rejects with the signal's reason and cancels
-the request. In-process server invocation still rejects the caller on abort;
+the longer-lived APIs above. For an HTTP call, abort both cancels the HTTP request
+and rejects the caller with the signal's reason. In-process server invocation still rejects the caller on abort;
 transport hints have no effect there. Integration wrappers must deliberately
 forward/adapt the invocation channel to support cancellation of shared work.
 
@@ -121,14 +130,17 @@ Import from `@solidjs/web`:
 
 - `respond(value, init?)`: a `ResponseEnvelope` containing value and HTTP metadata;
   scripted transport unwraps the value, direct HTTP can read its JSON body.
-- `redirect(url, init?)`: redirect envelope (302 default).
-- `reload(init?)`: empty revalidation envelope.
+- `redirect(url, init?)`: ordinary `Response` with Location (302 default).
+- `reload(init?)`: ordinary empty-body `Response` carrying revalidation metadata.
 - `init.revalidate`: a string or string array of integration-defined cache keys.
-  Use `REVALIDATE_HEADER` for the header name.
-- `isResponseEnvelope(value)`: cross-bundle structural brand check.
+  Use `REVALIDATE_HEADER` (`"X-Revalidate"`) for the header name.
+- `isResponseEnvelope(value)`: checks the registered `Symbol.for` envelope brand
+  across bundles; `instanceof ResponseEnvelope` cannot do that. It recognizes
+  `respond`'s envelope, not the ordinary Responses from `redirect`/`reload`.
 
-Production builds sanitize ordinary thrown errors to `Error("Internal Server Error")`;
-dev builds preserve originals (build condition selects this policy).
+Production builds sanitize ordinary thrown errors to `Error("Internal Server Error")`,
+without the original message, stack or own properties; dev builds preserve originals
+(build condition selects this policy, not `NODE_ENV`).
 Return/throw a response envelope for intentional client-facing outcomes, or use
 `markSafeError(error)` and `isSafeError` for explicitly safe errors.
 Thrown Response/ResponseEnvelope control flow retains its meaning.
@@ -171,10 +183,14 @@ Server `foldSetCookies(headers, setCookies)` exposes this nonmutating cookie fol
 
 ## No-JS forms and flash
 
-Use the reference's `.url` as a form action. Scripted calls carry
-`X-Server-Function-Instance`; unscripted calls decode FormData/query input.
-The built-in form convention applies to browser form navigation; scripted or
-tagged direct HTTP calls retain their response protocol.
+Use the reference's `.url` as a form action. Route by the address and body format,
+not by presence of the invocation's `X-Server-Function-Instance` header.
+The default no-JS path matches an untagged form POST to the bare address, with
+`Sec-Fetch-Mode` absent or `navigate`. A raw HTTP caller can match this too:
+"direct HTTP" alone does not select a different protocol. A non-navigation
+fetch mode on that same untagged form POST is rejected with 400. Scripted calls
+use the data address; explicit `X-Server-Function-Format` body tags also bypass
+form detection. These calls retain their response protocol.
 `createNoJSHandler` redirects ordinary outcomes with 303 to the
 referer, falling back to configured base or `/`:
 
@@ -183,11 +199,17 @@ referer, falling back to configured base or `/`:
 - Response outcomes retain headers and a valid redirect status/Location;
   without Location they redirect back. They are outside flash serialization.
 
-For flash, configure a deployment-wide high-entropy `secret` (at least 32 random
-bytes, supplied from deployment secrets); the bundler-injected secret is the
-fallback. Every serving instance needs the same secret. Flash is AES-GCM encrypted;
-with no secret the redirect succeeds but the outcome is withheld. Invalid/tampered
+Resolve the flash secret in order: deployment secret, then bundler-injected
+fallback, then no flash if neither exists. Use a deployment-wide high-entropy
+secret (at least 32 random bytes); every serving instance needs the same one.
+Flash is AES-GCM encrypted. With neither secret the redirect still succeeds,
+but the outcome is withheld. Invalid/tampered
 cookies decode as no flash. Cookies use SameSite=Lax and Max-Age=60.
+
+| Import location | Flash APIs |
+|---|---|
+| `@solidjs/web/server-functions` (isomorphic) | `FLASH_COOKIE`, `hasFlashCookie`, `clearFlashCookie` |
+| `@solidjs/web/server-functions/server` | async `encodeFlashCookie`, async `decodeFlashCookie`, `createNoJSHandler` |
 
 ```ts
 import { decodeFlashCookie } from "@solidjs/web/server-functions/server";
@@ -197,8 +219,7 @@ const submission = await decodeFlashCookie(cookie);
 if (hasFlashCookie(cookie)) response.headers.append("Set-Cookie", clearFlashCookie());
 ```
 
-`encodeFlashCookie` is async too; `FLASH_COOKIE`, `hasFlashCookie`, `clearFlashCookie`
-are isomorphic. Clear flash on the next render even when decode fails. The payload
+Clear flash on the next render even when decode fails. The payload
 has a roughly 4 KB ceiling: FormData/URLSearchParams become pairs, files are dropped,
 and oversized outcomes may degrade to `truncated: true`; render that as a bounded
 status instead of replaying the full result.

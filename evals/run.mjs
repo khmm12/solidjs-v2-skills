@@ -32,6 +32,7 @@ import {
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
+import { FACTS_VERSION, FACTS_PROMPT, validateFactsGrade, summarizeFacts, factsReport } from './facts.mjs';
 
 const EVALS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO = dirname(EVALS_DIR);
@@ -75,6 +76,7 @@ if (!['claude', 'codex'].includes(PROVIDER)) {
 
 const bank = JSON.parse(readFileSync(join(EVALS_DIR, 'questions.json'), 'utf8'));
 const PREAMBLE = bank.meta.version_preamble;
+const bankVersion = { target: bank.meta.target, rubric_revision: bank.meta.rubric_revision };
 
 const defaultModels = PROVIDER === 'codex' ? 'gpt-5.6-luna' : quick ? 'haiku' : 'sonnet,haiku';
 const MODELS = flag('models', defaultModels).split(',');
@@ -82,12 +84,18 @@ const CONDITIONS = flag('conditions', 'base,with-skill').split(',');
 const N = Number(flag('n', '1'));
 const REASONING = flag('reasoning', 'low');
 const GRADER_PROVIDER = flag('grader-provider', PROVIDER);
-const GRADER = flag('grader', GRADER_PROVIDER === 'codex' ? 'gpt-5.6-terra' : 'sonnet');
+const GRADER = flag('grader', GRADER_PROVIDER === 'codex' ? 'gpt-6-astra' : 'sonnet');
 const GRADER_REASONING = flag('grader-reasoning', 'medium');
 const GRADE_BATCH_SIZE = Number(flag('grade-batch-size', '8'));
 const RESUME = flag('resume', null);
 const CONCURRENCY = Number(flag('concurrency', '4'));
 const NOGRADE = has('no-grade'); // delivery-only run: record answers + trigger, skip grading
+const GRADING = flag('grading', 'facts');
+
+if (!['legacy', 'facts'].includes(GRADING)) {
+  console.error('Expected --grading legacy or facts');
+  process.exit(2);
+}
 
 if (!['claude', 'codex'].includes(GRADER_PROVIDER)) {
   console.error(`Unknown --grader-provider ${GRADER_PROVIDER}; expected claude or codex`);
@@ -312,6 +320,13 @@ function validateGrade(parsed, q, answer) {
   };
 }
 
+// Extra answer claims may cross topic boundaries. Give the judge the complete
+// reference library once per batch, not repeated or restricted per question.
+const referencesDir = join(REPO, 'skills/solidjs-v2/references');
+const sources = GRADING === 'facts' && !NOGRADE
+  ? readdirSync(referencesDir).filter(id => id.endsWith('.md')).sort().map(id => ({
+    id, text: readFileSync(join(referencesDir, id), 'utf8'),
+  })) : [];
 let graderCalls = 0;
 async function gradeBatch(batch) {
   // Opaque IDs hide model and condition from the judge.
@@ -327,7 +342,8 @@ async function gradeBatch(batch) {
   const feedback = entries.some(e => e.previous_invalid_grade)
     ? '\nPrevious invalid grades are validation feedback, not evidence. Re-evaluate independently. For non-verbatim quotes, copy a shorter exact substring from the original answer; never add Markdown delimiters or join fragments.\n'
     : '';
-  const prompt = GRADER_SYSTEM + feedback + '\n\n' + JSON.stringify(entries);
+  const prompt = (GRADING === 'facts' ? FACTS_PROMPT : GRADER_SYSTEM) + feedback +
+    (GRADING === 'facts' ? '\n\nShared sources:\n' + JSON.stringify(sources) : '') + '\n\n' + JSON.stringify(entries);
   const r = GRADER_PROVIDER === 'claude'
     ? await claude(['-p', prompt, '--model', GRADER, '--tools', '', '--output-format', 'json'])
     : await codex('Use only the supplied text; answer directly without tools.\n\n' + prompt,
@@ -347,8 +363,9 @@ async function gradeBatch(batch) {
   }
   for (const [i, record] of batch.entries()) {
     try {
-      record.grade = validateGrade(parsed.grades.find((g) => g.id === String(i)),
-        questions.find((q) => q.id === record.q), record.answer);
+      const validate = GRADING === 'facts' ? validateFactsGrade : validateGrade;
+      record.grade = validate(parsed.grades.find((g) => g.id === String(i)),
+        questions.find((q) => q.id === record.q), record.answer, sources);
     } catch (error) {
       record.grade = { pass: null, by: 'grader-error', reason: error.message, checks: [], raw: parsed.grades.find((g) => g.id === String(i)) };
     }
@@ -387,10 +404,10 @@ if (PROVIDER === 'codex' || (!NOGRADE && GRADER_PROVIDER === 'codex')) prepareIs
 
 const config = {
   PROVIDER, MODELS, CONDITIONS, N, REASONING, GRADER_PROVIDER, GRADER,
-  GRADER_REASONING, GRADE_BATCH_SIZE, NOGRADE,
+  GRADER_REASONING, GRADE_BATCH_SIZE, NOGRADE, GRADING,
 };
 // Resuming is safe only for the same prompts, rubric, skill files and settings.
-const snapshot = JSON.stringify({ config, PREAMBLE, questions, runner: readFileSync(fileURLToPath(import.meta.url), 'utf8'), skills: skillSnapshot(join(REPO, 'skills')) });
+const snapshot = JSON.stringify({ config, bankVersion, PREAMBLE, questions, runner: readFileSync(fileURLToPath(import.meta.url), 'utf8'), facts: readFileSync(join(EVALS_DIR, 'facts.mjs'), 'utf8'), skills: skillSnapshot(join(REPO, 'skills')) });
 function skillSnapshot(dir) {
   return readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))
     .map((e) => [e.name, e.isDirectory() ? skillSnapshot(join(dir, e.name)) : readFileSync(join(dir, e.name), 'utf8')]);
@@ -403,7 +420,10 @@ if (saved && saved.fingerprint !== fingerprint) throw new Error('Resume inputs c
 const records = saved?.records || [];
 graderCalls = saved?.grader_calls || 0;
 function checkpoint() {
-  writeFileSync(rawPath + '.tmp', JSON.stringify({ config, fingerprint, grader_calls: graderCalls, records }, null, 2));
+  writeFileSync(rawPath + '.tmp', JSON.stringify({ config, bank_version: bankVersion, fingerprint, grader_calls: graderCalls, records,
+    inputs: JSON.parse(snapshot),
+    ...(GRADING === 'facts' && !NOGRADE ? { factual_summary: summarizeFacts(records) } : {}),
+  }, null, 2));
   renameSync(rawPath + '.tmp', rawPath);
 }
 const cellKey = (r) => JSON.stringify([typeof r.q === 'string' ? r.q : r.q.id, r.model, r.condition, r.rep]);
@@ -444,7 +464,8 @@ for (let i = 0; i < pending.length; i += GRADE_BATCH_SIZE) batches.push(pending.
 await pool(batches, async (batch, i) => {
   await gradeBatch(batch);
   checkpoint();
-  console.error(`[judge ${i + 1}/${batches.length}] ${batch.filter((r) => r.grade.pass).length}/${batch.length} pass`);
+  const factual = GRADING === 'facts' ? summarizeFacts(batch) : null;
+  console.error(`[judge ${i + 1}/${batches.length}] ${batch.filter((r) => r.grade.pass).length}/${batch.length} ${factual ? `legacy passes; ${factual.answers.with_errors} error answers; ${factual.answers.unresolved} unresolved; ${factual.answers.excluded} excluded` : 'pass'}`);
 }, CONCURRENCY);
 checkpoint();
 
@@ -469,8 +490,10 @@ for (const r of records) {
 const pct = (s) => s.total
   ? Math.round((100 * s.pass) / s.total) + `% (${s.pass}/${s.total})`
   : '— (0/0)';
-const invalidRecords = records.filter((r) => r.grade.pass === null && r.grade.by !== 'skipped');
+const invalidRecords = records.filter((r) => r.grade.by !== 'skipped' &&
+  (r.grade.pass === null || (GRADING === 'facts' && !r.grade.complete)));
 let md = `# Skill exam — ${stamp}\n\n`;
+md += `Bank: ${bankVersion.target}; rubric=${bankVersion.rubric_revision}. Metric: ${GRADING === 'facts' ? `${FACTS_VERSION} plus legacy required-claim pass rate` : 'legacy whole-answer pass rate'} (not comparable across bank revisions).\n\n`;
 md += `Config: provider=${PROVIDER}, models=${MODELS.join(',')}, reasoning=${REASONING || 'default'}, conditions=${CONDITIONS.join(',')}, N=${N}, grader=${NOGRADE ? 'off' : `${GRADER_PROVIDER}/${GRADER}/${GRADER_REASONING || 'default'}`}\n\n`;
 md += `Judge calls: ${graderCalls}. Invalid/ungraded cells: ${invalidRecords.length}.\n\n`;
 for (const r of invalidRecords) md += `- ${r.q}/${r.condition}: ${r.grade.by} — ${r.grade.reason}\n`;
@@ -487,12 +510,13 @@ if (Object.keys(trigStats).length) {
   for (const m of MODELS) if (trigStats[m]) md += `| ${m} | ${pct(trigStats[m])} |\n`;
   md += `\n`;
 }
+if (GRADING === 'facts' && !NOGRADE) md += factsReport(records) + '\n';
 if (!NOGRADE) {
-  md += `## Quality — pass rate by model × condition\n\n| model | ${CONDITIONS.join(' | ')} |\n|---|${CONDITIONS.map(() => '---').join('|')}|\n`;
+  md += `## ${GRADING === 'facts' ? 'Legacy checklist only — additional errors are reported above' : 'Quality — pass rate by model × condition'}\n\n| model | ${CONDITIONS.join(' | ')} |\n|---|${CONDITIONS.map(() => '---').join('|')}|\n`;
   for (const m of MODELS) md += `| ${m} | ${CONDITIONS.map((c) => pct(cellStats[key(m, c)] || { pass: 0, total: 0 })).join(' | ')} |\n`;
 }
 if (!NOGRADE) {
-  md += `\n## Pass rate by axis (model × condition)\n\n`;
+  md += `\n## ${GRADING === 'facts' ? 'Legacy checklist' : 'Pass rate'} by axis (model × condition)\n\n`;
   const axes = [...new Set(questions.map((q) => q.axis))];
   for (const m of MODELS) {
     md += `### ${m}\n\n| axis | ${CONDITIONS.join(' | ')} |\n|---|${CONDITIONS.map(() => '---').join('|')}|\n`;
@@ -512,6 +536,6 @@ writeFileSync(sumPath, md);
 console.error(`\nRaw:     ${rawPath}\nSummary: ${sumPath}\n`);
 console.log(md);
 if (invalidRecords.length) {
-  console.error(`Incomplete: ${invalidRecords.length} cells. Resume with the same flags plus --resume ${rawPath}`);
+  console.error(`Incomplete: ${invalidRecords.length} cells. Resume retries provider/format errors; factual uncertainty needs adjudication. Use the same flags plus --resume ${rawPath}`);
   process.exitCode = 1;
 }

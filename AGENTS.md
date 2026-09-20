@@ -57,6 +57,12 @@ directory for its scheduled fate.
 
 ## Skill exam (evals/)
 
+Evaluate ordinary development tasks as well as API explanations. Verify generated
+implementations with typechecks and runtime assertions. Factual scoring is +1
+supported, 0 missing, -1 incorrect; report errors before coverage and score.
+Practical rubrics constrain behavior, not a preferred implementation, and
+distinguish dev advisories from failures.
+
 `evals/` is a rubric-graded exam that measures whether a model answers Solid 2.0
 questions correctly **with** the skill vs. without it — the regression net for
 reference content.
@@ -70,8 +76,12 @@ reference content.
   correctness through `must_include`. IDs are axis-prefixed: `A`=api, `B`=pattern, `C`=react (vs
   React), `D`=v1 (vs 1.x).
 - `run.mjs` compares `base` (prior knowledge) with `with-skill` (tool retrieval).
-  Default: Codex Luna/low answers, Terra/medium grades batches of eight answers
-  against the sourced rubric. Each answer runs in an isolated session.
+  Default: Codex Luna/low answers, Astra/medium grades batches of eight answers
+  against the sourced rubric and shared references, auditing extra claims/code.
+  Each answer runs in an isolated session. Coverage, errors, uncertainty, and
+  whole-answer passes are separate; omissions are not hallucinations.
+- `facts.mjs` owns the factual judge prompt, evidence validation, scoring, and
+  reports. Its offline tests are included by `run.test.mjs`.
 - Run `node evals/run.test.mjs` for offline runner checks; `node evals/run.mjs`
   for the full exam. Use `--quick` or `--questions A5,B5,B6` for focused runs.
 - `results/` is git-ignored. Answers and grades are checkpointed after each call;

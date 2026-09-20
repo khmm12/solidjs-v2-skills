@@ -34,7 +34,18 @@ For `getRequestEvent().locals` types, augment `RequestEventLocals` using the
 
 ## DOM refs
 
-The published type is recursive:
+Use the imported type for forwarded refs:
+
+```ts
+import type { JSX } from "@solidjs/web";
+type ForwardedRef<T> = JSX.Ref<T>;
+const refs: ForwardedRef<HTMLButtonElement> = [
+  button => button.focus(),
+  [button => button.setAttribute("data-ready", "true")]
+];
+```
+
+Its recursive shape, expressed as a local alias:
 
 ```ts
 type RefCallback<T> = (el: T) => void;
@@ -43,11 +54,19 @@ type Ref<T> = T | RefCallback<T> | undefined | Ref<T>[];
 
 Use callbacks when composing arrays: `ref={[el => { button = el; }, focus]}`.
 The compiler assigns a bare local only in a single `ref={button}`, not as an
-array element. Library code applies resolved callbacks with `applyRef`:
+array element. Library code can walk nested forwarded refs and pass each resolved
+callback to `applyRef`; element values/`undefined` need no callback invocation:
 
 ```ts
 import { applyRef } from "@solidjs/web";
-applyRef<HTMLButtonElement>(button => button.focus(), buttonElement);
+import type { JSX } from "@solidjs/web";
+function applyForwardedRef<T extends Element>(ref: JSX.Ref<T>, element: T): void {
+  if (Array.isArray(ref)) {
+    for (const child of ref) applyForwardedRef(child, element);
+  } else if (typeof ref === "function") {
+    applyRef(node => ref(node), element);
+  }
+}
 ```
 
 Published signature (DOM `Element`, separate from Solid's renderable type):
@@ -85,5 +104,5 @@ Context scopes services/state to a subtree and supports per-request SSR isolatio
 - `createMemo`'s second argument is options; seed `prev` via a default parameter.
 - Create test graphs in `createRoot`, retain/call disposal, and `flush()` before
   checking committed values. `await resolve(source)` waits for async settlement.
-- Capture diagnostics through `DEV?.diagnostics.capture()`; the dedicated harness
+- Capture diagnostics through `OBSERVE?.diagnostics.capture()`; the dedicated harness
   is described in [reactivity](reactivity.md).
