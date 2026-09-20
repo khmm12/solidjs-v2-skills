@@ -129,5 +129,5 @@ rule or footgun, then run the offline checks and a focused model comparison.
 Keep independent requirements in separate entries. Entries combine with AND;
 explicit alternatives within an entry combine with OR. Version semantic rubric
 changes with `meta.rubric_revision`. Preserve isolation and discovery when fixing
-eval bugs. Follow the [repository verification rules](../AGENTS.md#ground-truth-in-priority-order)
-for API claims and changed examples.
+eval bugs. For API claims and example changes, follow the
+[contribution guidelines](../README.md#contributing).

@@ -116,8 +116,9 @@ use its published typings to resolve API differences.
 example, missing pattern, or installation problem. Include the package version
 and a small reproduction.
 
-For reference changes, update the corresponding evaluation question and follow
-the [verification conventions](AGENTS.md). Run the offline checks with:
+For reference changes, cite published typings or upstream source and typecheck
+changed examples against the documented Solid version. Update the corresponding
+evaluation question, then run the offline checks:
 
 ```sh
 node evals/run.test.mjs
