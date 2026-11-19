@@ -34,8 +34,9 @@ keep any remaining client-used imports suitable for the client bundle.
 ```ts
 // server entry
 import { configureServerFunctionsServer, handleServerFunctionRequest } from "@solidjs/web/server-functions/server";
+import { provideRequestEvent } from "@solidjs/web/storage";
 import "virtual:solid-server-function-manifest";
-configureServerFunctionsServer({ endpoint: "/_server" });
+configureServerFunctionsServer({ endpoint: "/_server", provideEvent: provideRequestEvent });
 // At the matching endpoint:
 const response = await handleServerFunctionRequest(request);
 ```
@@ -45,6 +46,8 @@ explicit `/client` and `/server` entries expose one environment's types.
 The default endpoint is `/_server`. Handler hooks include `createEvent`,
 `provideEvent`, `wrapInvocation`, `transformResult`, `collectFlightData`, `handleNoJS`.
 `wrapInvocation` wraps server execution; integrations compose middleware there.
+A hand-rolled Node handler needs a request scope provider as above; a framework
+can supply its own via `provideEvent`.
 
 Same-origin CSRF checking is enabled by default. Requests missing origin evidence
 are rejected unless `allowRequestsWithoutOriginCheck` is explicitly enabled.
@@ -77,7 +80,7 @@ A global script-style ambient declaration replaces package types instead.
 
 | Lifetime | API |
 |---|---|
-| Declaration | `GET(fn)`, `withMeta(fn, metadata)` |
+| Declaration | `GET(fn)`, `live(fn)`, `broadcast(fn)`, `withMeta(fn, metadata)` |
 | Session transport policy | `configureServerFunctionsClient({ prepareRequest })` |
 | One invocation | `invoke(fn, { signal, keepalive, priority }, ...args)` |
 
@@ -117,17 +120,28 @@ transport hints have no effect there. Integration wrappers must deliberately
 forward/adapt the invocation channel to support cancellation of shared work.
 
 `live(fn)` declares a server async iterable as successive snapshots of a query.
-It reconnects after post-connect failures with backoff; first-connect failures
-reject. `break` cancels the request; `invoke`'s signal spans reconnects. Compose
-as `live(GET(fn))`. A live source re-emits current state on each invocation and
-uses ordinary reads, outside mutation single-flight delivery.
+It implies `GET`; `live(GET(fn))` is equivalent. First-connect failures reject;
+retryable disconnects after connection re-invoke with backoff. Normal completion
+does not reconnect. The source must supply current state on each invocation,
+though an unchanged first value may be skipped on reconnect. `break` cancels
+the request; `invoke`'s signal spans reconnects. Pass
+`getRequestEvent()?.request.signal` to the server-side wait/subscription so it
+can unwind on disconnect. Live calls are reads outside mutation single-flight.
+
+Use `broadcast(fn)` only if live output is safe to share: viewers with the same
+function and arguments can share one source per server process. Gate each caller
+in the outer function; do not read per-viewer `locals` or capture outer locals in
+the shared answer.
 
 ## Responses and errors
 
 Import from `@solidjs/web`:
 
-- `respond(value, init?)`: a `ResponseEnvelope` containing value and HTTP metadata;
-  scripted transport unwraps the value, direct HTTP can read its JSON body.
+- `respond<T>(value, init?): T`: typed as the value callers receive. At
+  runtime it creates a branded `ResponseEnvelope`, a real `Response`
+  containing the in-memory value and HTTP metadata. Scripted and in-process
+  server-function calls unwrap the value; raw HTTP can read a JSON body for
+  JSON-safe values.
 - `redirect(url, init?)`: ordinary `Response` with Location (302 default).
 - `reload(init?)`: ordinary empty-body `Response` carrying revalidation metadata.
 - `init.revalidate`: a string or string array of integration-defined cache keys.
@@ -167,11 +181,20 @@ handles in-process ones. Per-request `transformResult` overrides server config.
 
 ## Single-flight
 
-Client `subscribeFlightData((data, { response }) => ...)` registers a consumer
-and returns an unsubscribe function. While registered, non-GET calls send
-`X-Single-Flight`; server `collectFlightData(event, outcome)` supplies revalidation
-data folded into that response. GET reads stay plain/cacheable. With no consumer,
-the transport sends ordinary responses and performs no collection work.
+Register client `subscribeFlightData(id, (data, { response }) => ...)` and
+server `registerFlightDataSource(id, (event, outcome) => ...)` from the client
+and server entries respectively. Each returns unsubscribe. The unnamed client
+overload `subscribeFlightData(consumer)` pairs with `collectFlightData` and
+uses reserved id `"true"`.
+
+A non-read call made inside an action asks for the registered source IDs via
+`X-Single-Flight`. POST outside an action does not trigger default revalidation;
+explicit redirect/revalidation metadata can still reach consumers. GET/live
+reads stay plain. The response folds data under `{ value, data: { [id]: slice } }`;
+each consumer gets its own slice and is awaited before the result returns.
+Metadata or a successful action with nothing folded can notify consumers with
+`undefined` data. `X-Revalidate` keys are interpreted by the integration; core
+does not match them to consumer registration IDs.
 
 `ServerFunctionOutcome` provides `id`, `value`, optional `response`, `request`,
 `thrown`, `targetUrl`, `revalidateKeys`, `foldedHeaders`. Target URL is the same-origin
@@ -181,8 +204,8 @@ Server `foldSetCookies(headers, setCookies)` exposes this nonmutating cookie fol
 
 ## No-JS forms and flash
 
-Use the reference's `.url` as a form action. Route by the address and body format,
-not by presence of the invocation's `X-Server-Function-Instance` header.
+Use the reference's `.url` as a form action. The address and body format select
+the protocol.
 The default no-JS path matches an untagged form POST to the bare address, with
 `Sec-Fetch-Mode` absent or `navigate`. A raw HTTP caller can match this too:
 "direct HTTP" alone does not select a different protocol. A non-navigation

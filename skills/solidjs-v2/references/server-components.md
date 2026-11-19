@@ -1,7 +1,5 @@
 # Server components (experimental preview)
 
-(published typings) and upstream `f8b40b7e` sources.
-
 Server components are an **experimental preview outside Solid 2.0's stability
 contract**, and should be version-pinned. They live under conditional
 `@solidjs/web/frames`, with explicit `@solidjs/web/frames/client` and
@@ -19,20 +17,21 @@ export async function userCard(id: string) {
   return (props: { actions: Slot<{ compact?: boolean }> }) => (
     <article>
       <h2>{user.name}</h2>
-      {props.actions({ compact: true })}
+      <props.actions compact />
     </article>
   );
 }
 
 // client component
-import { dynamic, hydrate } from "@solidjs/web";
+import { dynamicComponent } from "solid-js";
+import { hydrate } from "@solidjs/web";
 import { installServerComponents } from "@solidjs/web/frames/client";
 import { userCard } from "./user-card";
 
 installServerComponents(); // before hydrate() or render()
 
 function Page(props: { id: string }) {
-  const UserCard = dynamic(() => userCard(props.id));
+  const UserCard = dynamicComponent(() => userCard(props.id));
   return <UserCard actions={p => <button disabled={p.compact}>Edit</button>} />;
 }
 
@@ -42,8 +41,10 @@ hydrate(() => <Page id="42" />, document.getElementById("app")!);
 The server function's arguments are the server inputs. Props passed to the
 returned component are client-owned slots/positions; they do not become
 ordinary server data. Consume the promise of a component through
-`dynamic(() => serverFn(...))`, which keeps a stable boundary across
-refetches. Install the transport once before hydration or client rendering;
+`dynamicComponent(() => serverFn(...))`, which keeps a stable boundary across
+refetches without pulling in the native tag renderer. Render slots as JSX so
+prop reads stay at the slot boundary; a direct call evaluates arguments eagerly.
+Install the transport once before hydration or client rendering;
 the package is side-effect-free, so a bare import is insufficient.
 
 Enable compilation with `@solidjs/vite-plugin`:
@@ -68,20 +69,20 @@ Key public integration surfaces are intentionally small:
 
 - client: `installServerComponents`, `createFrameHost`, `createFrameElement`,
   `applyFrameResponse`, `isFrameStreamResponse`, and the `Slot` type;
-- server: `Slot`, `renderServerComponent`, `serverComponentResponse`,
-  `frameTransformResult`, and `frameTransformDirectResult`.
+- server: `Slot`, `frameTransformResult`, `frameTransformFlightResult`, and
+  `frameTransformDirectResult`.
 
 ## Footguns
 
-- This preview can change independently of stable Solid 2.0 APIs; pin matching
-  `@solidjs/web` and `@solidjs/vite-plugin` prerelease versions.
+- This preview can change independently of stable Solid 2.0 APIs; pin tested
+  versions of `@solidjs/web` and `@solidjs/vite-plugin`.
 - Create application context providers inside the server-component root. The component renders
   inline at document time but standalone on refetch/mutation responses, so
   reading an outer Provider would diverge. Default-less `useContext` throws an
   error explaining the boundary; defaulted contexts read their default.
   Providers created inside the server component work normally, as do the
   framework's Loading/Errored/reveal boundary contexts.
-- The current boundary is a real `<dx-frame data-fid="…">` custom element,
+- The current boundary is a real `<solid-frame data-fid="…">` custom element,
   with a DOM/CSS/layout footprint; custom elements are inline by default.
 - Call `installServerComponents()` explicitly and early. Installing after
   `hydrate()`/`render()` lets the first server-function response use the

@@ -29,13 +29,13 @@ React patterns, old Solid APIs, or invented APIs.
 
 ## Ground truth, in priority order
 
-Solid 2.0 docs are prerelease RFCs ("proposal-shaped") and drift from reality in
-both directions. When sources disagree:
+The upstream Solid 2.0 RFCs are frozen design records. When sources disagree:
 
 1. **Published npm typings** (`solid-js`, `@solidjs/web`, `@solidjs/signals`
    in a real project's `node_modules`) — what users actually compile against.
 2. Upstream repo sources and tests (`packages/solid*/src`, `test/*.spec.ts`).
-3. RFC docs / MIGRATION.md / CHEATSHEET.
+3. Current docs on `docs.solidjs.com` and upstream `MIGRATION.md`; use frozen
+   RFCs as design context, not as a contract.
 
 Before documenting any prerelease-only API, grep the upstream `.changeset/`
 directory for its scheduled fate.
@@ -47,7 +47,7 @@ directory for its scheduled fate.
   cleanup pass later. Don't invent replacements for removed APIs; if upstream
   has no equivalent, say so explicitly.
 - Idioms taught here should be **compile-verified**: typecheck a sample using
-  them against the installed prerelease (`tsc` in any project pinned to the target
+  them against the installed release (`tsc` in any project pinned to the target
   version) — grep for old names is not verification.
 - **New teaching content gets an eval question.** When a reference file gains a
   new rule or footgun, add (or update) a question in `evals/questions.json` — see
@@ -93,13 +93,12 @@ reference content.
   resume an interrupted run with the same flags plus `--resume <run.json>`.
   See [evals/README.md](evals/README.md) for requirements, isolation, and scoring.
 
-## When the Solid prerelease advances
+## When the Solid version advances
 
-1. Resolve the newest published v2 version from npm (including prereleases)
-   and anchor its exact `gitHead`. Compare the upstream cheatsheet as evidence;
-   keep teaching content in maintained topic references.
-2. Diff upstream `documentation/solid-2.0/` and `.changeset/` since the last
-   anchored commit; fold API changes into the affected reference files.
+1. Resolve the latest stable v2 from npm (use prereleases only for an explicit
+   prerelease target) and anchor its exact `gitHead`.
+2. Compare published declarations, upstream changelogs and `.changeset/` since
+   the last anchor; fold public contract changes into the affected references.
 3. Re-verify drift-prone claims against the new published typings (removed
    exports, option overloads, and `refresh()`/pending semantics).
 4. Bump the reference target in each root `SKILL.md`, `version` in both plugin

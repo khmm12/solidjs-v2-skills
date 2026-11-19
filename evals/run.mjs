@@ -324,9 +324,13 @@ function validateGrade(parsed, q, answer) {
 // reference library once per batch, not repeated or restricted per question.
 const referencesDir = join(REPO, 'skills/solidjs-v2/references');
 const sources = GRADING === 'facts' && !NOGRADE
-  ? readdirSync(referencesDir).filter(id => id.endsWith('.md')).sort().map(id => ({
-    id, text: readFileSync(join(referencesDir, id), 'utf8'),
-  })) : [];
+  ? [
+    ...readdirSync(referencesDir).filter(id => id.endsWith('.md')).sort().map(id => ({
+      id, text: readFileSync(join(referencesDir, id), 'utf8'),
+    })),
+    { id: 'migration-map.md', text: readFileSync(join(REPO, 'skills/solidjs-v2-migration/references/migration-map.md'), 'utf8') },
+    { id: 'solidjs-v2/SKILL.md', text: readFileSync(join(REPO, 'skills/solidjs-v2/SKILL.md'), 'utf8') },
+  ] : [];
 let graderCalls = 0;
 async function gradeBatch(batch) {
   // Opaque IDs hide model and condition from the judge.

@@ -11,8 +11,8 @@ for reactivity, async data, stores, DOM, and server rendering.
 Works with Codex, Claude Code, and other agents supported by
 [`npx skills`](https://github.com/vercel-labs/skills#supported-agents).
 
-Current Solid version: `solid-js@2.0.0-rc.8` and
-`@solidjs/web@2.0.0-rc.8`.
+Current Solid version: `solid-js@2.0.3` and `@solidjs/web@2.0.3`
+([upstream source](https://github.com/solidjs/solid/tree/68406c2077eff22c67f71db4a16bf7026ddceee1)).
 
 ## Install
 
@@ -105,7 +105,8 @@ by name.
 
 ## Results
 
-Without the skills, Codex Luna at low reasoning failed to compile all three
+In a previous evaluation targeting `2.0.0-rc.8`, Codex Luna at low reasoning
+without the skills failed to compile all three
 practical coding tasks. With the skills, all three implementations passed strict
 TypeScript and the behavior checks.
 

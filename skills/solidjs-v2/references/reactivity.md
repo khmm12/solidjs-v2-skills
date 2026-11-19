@@ -89,7 +89,8 @@ parameters and component/flow-callback bodies run at setup: destructuring
 `function Heading({ title })` or assigning `const title = props.title` captures
 once, loses updates, and warns in dev. Keep the props object. To name a changing
 expression, use an accessor (`const title = () => props.title`) and call it in
-JSX/compute. Use `untrack(() => props.title)` for an intentional one-time capture.
+JSX/compute. Use `untrack(() => props.title)` only for an intentional one-time
+capture of a value that is never downstream of async work.
 
 Components execute once per mount. Updates rerun dependent JSX bindings and
 computations directly, without a component rerender or virtual DOM. An effect's
@@ -152,6 +153,9 @@ effects and one-time post-render work as `onSettled`.
 
 ### Lifetime
 
+An owner's children dispose before its cleanup; within one owner, later cleanup
+registrations run first.
+
 `createRoot` belongs to its parent. `runWithOwner(null, () => createRoot(...))`
 creates a deliberately detached root; retain its disposer where appropriate.
 `getOwner`/`runWithOwner` restore an active owner's scope; `getObserver` identifies
@@ -183,19 +187,34 @@ the user lane and runs with DOM work, including during hydration/held loading
 when user-lane work may be deferred.
 Solid effects use tracked compute callbacks, rather than React dependency arrays.
 
+To close a menu without holding its close behind a consumer's async selection,
+schedule `onFlush(() => setOpen(false))` from the event handler, then call the
+consumer inline. The callback runs after the current flush, in a separate update
+that does not wait for async work; a dependent reader can still join a hold.
+Use `onSettled`, not `onFlush`, in component setup. `queueMicrotask` scheduled
+before the first write can run before that write's flush; it is not equivalent.
+
 A ref runs during render, potentially before insertion. Store the node through
 `ref={setNode}`, then measure in a render effect tracking `node()`: the queued
 signal update trails insertion on initial mount and subsequent updates.
 
 ## Errors and diagnostics
 
-Use `Errored`/`createErrorBoundary` around fallible reactive work. An error escaping
-all boundaries halts reactivity: the cause is logged/rethrown and later
+Use `Errored` around fallible reactive work. An error escaping
+all boundaries halts reactivity: the cause reaches the platform error channel and later
 writes/flushes are ignored (`REACTIVITY_HALTED`). `resetErrorHalt` is an internal
 test/dev-reload hook re-exported by `solid-js`, not `@solidjs/web`; it clears the halt flag even in
 the production client build, but does not repair a partially applied application
 graph. The server export is a no-op. Dev `render()`/refresh runtime reset a prior
 halt; production has no automatic recovery.
+
+To report errors shown by `Errored` in production, use
+`configureClientErrors({ onError })` from `solid-js`. A root hook takes
+precedence: `render(view, root, undefined, { onError })` or
+`hydrate(view, root, { onError })` from `@solidjs/web`. The hook receives the error
+and `{ ownerPath?, boundaryPath? }`; labels are available in dev/observe builds.
+It deduplicates the same error object, and does not receive uncaught errors
+already reported through the platform.
 
 SSR setters emit a deprecation warning (`SERVER_WRITE`) once per process/category: ordinary signal/store setters alter inert data
 without rerendering; optimistic setters are no-ops, including their callbacks.
@@ -203,7 +222,7 @@ Model changing SSR data as async sources; return subscription data as an AsyncIt
 
 | Diagnostic | Repair |
 |---|---|
-| `STRICT_READ_UNTRACKED` | Read in JSX/compute, or explicitly capture with `untrack` |
+| `STRICT_READ_UNTRACKED` | Move reactive reads to JSX/compute or the event handler using the value; don't mask the diagnostic with `untrack` |
 | `REACTIVE_WRITE_IN_OWNED_SCOPE`, `ACTION_CALLED_IN_OWNED_SCOPE` | Derive state; invoke writes/actions from imperative callbacks |
 | `PENDING_ASYNC_UNTRACKED_READ` | Move async reads into JSX/compute |
 | `ASYNC_OUTSIDE_LOADING_BOUNDARY` | Add `Loading` for visible fallback; otherwise root mount waits |

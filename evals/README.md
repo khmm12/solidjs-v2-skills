@@ -47,7 +47,7 @@ only a proxy.
 
 The default `--grading facts` distinguishes correct claims, omissions, and
 errors. The judge receives anonymous answers, their sourced rubrics, and the
-reference library once per batch. It assesses each required claim and reviews
+reference library with its target version once per batch. It assesses each required claim and reviews
 the rest of the answer for additional factual or implementation errors.
 Equivalent implementations count; requested behavior determines correctness.
 

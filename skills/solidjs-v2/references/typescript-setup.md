@@ -2,8 +2,8 @@
 
 ## Packages and JSX
 
-Use matching `solid-js`/`@solidjs/web` prereleases and a compatible compiler:
-`@solidjs/babel-plugin` for Babel or `@solidjs/vite-plugin` for Vite
+Use matching `solid-js`/`@solidjs/web` 2.x versions and a compatible compiler:
+`@solidjs/babel-plugin` 2.x for Babel or `@solidjs/vite-plugin` 3.x for Vite
 (default compiler: `@solidjs/compiler`).
 
 ```json
@@ -91,7 +91,9 @@ const todos = useContext(TodosContext);
 The context itself is the provider component. Without a default, `useContext`
 returns `T` and throws `ContextNotFoundError` for a missing provider.
 Use it directly; a wrapper whose sole purpose is narrowing `T | undefined` is
-redundant. `createContext(defaultValue)` supplies an explicit fallback.
+redundant. Use a real fallback such as `createContext<TodosCtx | null>(null)`
+for optional context: `undefined` in a default or a provider is treated as not
+provided.
 Context scopes services/state to a subtree and supports per-request SSR isolation.
 
 ## Typechecks and reactive tests

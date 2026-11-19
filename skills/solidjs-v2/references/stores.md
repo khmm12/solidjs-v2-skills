@@ -27,33 +27,46 @@ The store is a proxy object/array, not an accessor: read `rows.length`, not
 
 A returned value shallow-replaces the root: object top-level diff, or array
 indices and length. Keyed reconciliation belongs to `reconcile`/derived returns.
-For migrated path setters, `storePath("user", "name", "B")` produces a draft
-callback; it supports ranges, filters, and `storePath.DELETE`. New code uses drafts.
+Use draft mutation for path updates; `storePath` is not a `solid-js` export.
 
 ## Options and derived forms
 
-Both `createStore` and `createOptimisticStore` have these published call shapes:
+Both `createStore` and `createOptimisticStore` have these published call shapes
+(shown with `createStore`):
+
+| Form | Options | Seed |
+|---|---|---|
+| Plain value | `StoreOptions`: `shallow`, `name`, compiler `loc`; no hydration options | Initial value is the store data |
+| Whole-value derived object | `ProjectionOptions` except `seedLoadingValue`: includes `shallow`, `key`, and hydration options | Omit or pass `null`; not for arrays |
+| Seeded derive | `ProjectionOptions`, including `shallow`, `key`, `seedLoadingValue`, and hydration options | Complete `T`, not `Partial<T>` |
+
+Both derived forms expose a refreshable store. The seeded derive can mutate
+its draft and return nothing, return a replacement, return a Promise, or
+return an AsyncIterable that **yields `void | T`**, not another iterable.
+The backing seed stays hidden before the first async answer unless
+`seedLoadingValue: true` explicitly exposes it (seeded overload only).
 
 ```ts
 import type { Store, StoreSetter, StoreOptions, ProjectionOptions, Refreshable } from "solid-js";
 type NoFn<T> = T extends Function ? never : T;
+type NoArray<T> = Extract<T, readonly unknown[]> extends never ? unknown : never;
 declare function createStore<T extends object = {}>(
   initial: NoFn<T> | Store<NoFn<T>>, options?: StoreOptions
 ): [Store<T>, StoreSetter<T>];
 declare function createStore<T extends object = {}>(
+  derive: (() => T | Promise<T> | AsyncIterable<T>) & NoArray<T>,
+  seed?: null, options?: Omit<ProjectionOptions, "seedLoadingValue">
+): [Refreshable<Store<T>>, StoreSetter<T>];
+declare function createStore<T extends object = {}>(
   derive: (draft: T) => void | T | Promise<void | T> | AsyncIterable<void | T>,
-  seed: Partial<T> | Store<NoFn<T>>, options?: ProjectionOptions
+  seed: NoFn<T> | Store<NoFn<T>>, options?: ProjectionOptions
 ): [Refreshable<Store<T>>, StoreSetter<T>];
 ```
 
-Plain `StoreOptions` has only `name` and `shallow`. Derived `ProjectionOptions`
-also has `key`, `seedLoadingValue`, and Solid's hydration fields; those hydration
-options configure a computation, not a plain store. `StoreSetter<T>` is
+The Solid wrappers add hydration fields to `ProjectionOptions`.
+`StoreSetter<T>` is
 `(fn: (draft: T) => T | void) => void`; the derive callback uses the same `T`
 for its draft and replacement data, not two independent data types.
-
-Published `solid-js` client/server and `@solidjs/signals` typings agree on these
-overloads, including plain optimistic options and refreshable derived stores.
 
 | Derived state | Readonly | Writable |
 |---|---|---|
@@ -111,18 +124,30 @@ the store slot to notify consumers:
 setState(draft => { draft.cache = new Map(draft.cache).set("a", 1); });
 ```
 
-Ordinary user-defined class instances remain wrappable unless frozen. Mutate
-their fields through the store draft to notify readers:
+Ordinary user-defined class instances wrap by default. Prototype getters read
+through the proxy; call mutating methods on the draft to notify readers.
+Frozen plain objects and arrays also wrap: draft writes change the store, not
+the frozen input.
 
 ```ts
-class Counter { value = 0; }
+import { createStore, markRaw } from "solid-js";
+
+class Counter {
+  value = 0;
+  get doubled() { return this.value * 2; }
+  increment() { this.value++; }
+}
 const [state, setState] = createStore({ counter: new Counter() });
-setState(draft => { draft.counter.value++; });
+setState(draft => { draft.counter.increment(); });
+
+const opaque = markRaw(new Counter()); // mark just this object
+class NativeBackedCounter extends Counter {}
+markRaw(NativeBackedCounter); // all instances of this class and its subclasses
 ```
 
-This differs from raw native `Map` internals. Use shallow mode or reference
-replacement for raw data; `markRaw` is an internal symbol with no public
-`solid-js` root export.
+Use `markRaw` before storing objects whose methods need the original receiver
+(for example, a class using private fields). For raw data, replace the tracked
+slot; internal mutations do not notify readers.
 
 ## Nested store views
 

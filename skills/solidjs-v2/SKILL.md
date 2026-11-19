@@ -5,7 +5,7 @@ description: SolidJS 2.0 implementation and API explanations, including React co
 
 # SolidJS 2.0
 
-Reference target: `solid-js@2.0.0-rc.8` and `@solidjs/web@2.0.0-rc.8`.
+Reference target: `solid-js@2.0.3` and `@solidjs/web@2.0.3`.
 
 ## Confirm the version
 

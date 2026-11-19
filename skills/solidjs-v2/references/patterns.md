@@ -101,6 +101,9 @@ gaps; register explicit cancellation synchronously in compute.
 
 ## Streaming a socket
 
+For a latest-snapshot feed, use the [built-in subscription adapter](async-and-actions.md#cancellation-and-streaming).
+Use a buffered bridge like the one below only when every message matters.
+
 For one active subscription, cancel the previous run **before** opening its
 replacement, and register the current run's disposal cleanup too. These are
 separate triggers: after rendering, an old owner can survive until the replacement

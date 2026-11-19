@@ -17,7 +17,7 @@
 | `Context.Provider` | `<Context value={...}>` |
 | `classList` | `class` object/array |
 | `createSelector` | `createProjection` |
-| `createDynamic(source, props)` | `dynamic(source)` component factory |
+| `createDynamic(source, props)`, `<Dynamic component>` | `dynamic(source)` factory; `dynamicComponent(source)` for component-only sources |
 | `Index`, `indexArray` | `For keyed={false}`, non-keyed `mapArray` |
 
 Rename caveats: `Errored` fallback gets an accessor (`error()`); `merge` treats
@@ -74,7 +74,8 @@ const user = createMemo(() => fetchUser(id()));
 | `refetch` | `refresh(source)`; await/yield its settled result when sequencing |
 | `mutate`, mutation transitions | `action` with optimistic primitives |
 
-Bare refresh is quiet. Put `affects(source); yield refresh(source)` inside an
+Bare refresh is quiet. Pass the original accessor or derived store root, not a
+nested read. Put `affects(source); yield refresh(source)` inside an
 action to make that reload pending. A saving process indicator reads a separate
 optimistic flag, rather than the readiness of the data.
 
@@ -93,11 +94,19 @@ const add = action(async function* (todo: Todo) {
 Live-channel confirmations can hold the action with `yield until(predicate,
 { timeout })`, reading authoritative data rather than its optimistic overlay.
 
+For external subscriptions, migrate `from(source)` to
+`createMemo(() => from(source))`: v2 `from` returns an async iterable, not a
+signal. It adapts callback subscriptions, Observables, and async iterables;
+the adapter closes on recompute or disposal. For v1 `createDeferred`, move
+idle/debounce scheduling to application code. V2 `createDeferred` is instead
+an async memo that retains the last answer without holding writes on refetch.
+
 ## Stores
 
-Use `createStore` with draft setters for `createMutable`/`modifyMutable` and
-`produce` wrappers. New setter code mutates a draft; `storePath` is available
-for retained path-style migrations.
+Use `createStore` with draft setters for `createMutable`/`modifyMutable`,
+`produce`, and v1 path setters. Translate ranges/filters to loops, and use
+`delete` where a v1 path setter used `undefined` to remove a key. `storePath`
+is not exported by `solid-js`.
 
 ```ts
 setStore(draft => { draft.user.name = "Ada"; });
@@ -132,22 +141,21 @@ in production. Async compute cleanup uses synchronous `onCleanup` before await/y
 Use callback refs/ref factories for `use:` directives. Compose callbacks in
 arrays. Use ordinary HTML attributes and `class`/`style` objects for namespaced
 attributes, camelCase handlers for events, and ref listeners for native options.
+Lowercase `onclick` is an attribute, not an event binding.
 Use lowercase `tabindex`/`readonly`; initial form values use platform defaults.
 Put reactive handler selection inside the callback. Dispose the render root to
 remove delegated listeners (`clearDelegatedEvents` has no replacement call).
 
 `useContext` on a default-less context returns `T` and throws if missing; call it
-directly when a wrapper only repeats that check. Supply an explicit default for
-optional contexts. Parent disposal disposes child roots; detach intentionally
-through `runWithOwner(null, ...)` when needed.
+directly when a wrapper only repeats that check. Supply `null` (not `undefined`)
+as the fallback for an intentionally optional context. Parent disposal disposes
+child roots; detach intentionally through `runWithOwner(null, ...)` when needed.
 
 ## APIs without a direct replacement
 
-`createDeferred` needs application-level debouncing. `enableScheduling` and the
-internal `writeSignal` have no public equivalent. Replace `from` with an async
-iterable memo and `observable` with an adapter driven by a split effect. Hot
-streams need synchronous cleanup that cancels/unblocks the external source;
-iterator `.return()` alone queues behind a parked await.
+`enableScheduling` and the internal `writeSignal` have no public equivalent.
+Replace `observable` with a split effect that pushes values to the external
+consumer.
 
 ## Completion
 

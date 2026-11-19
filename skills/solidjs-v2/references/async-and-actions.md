@@ -22,8 +22,10 @@ stream settles to `undefined` and releases `Loading`. Distinguish that completio
 from a source still awaiting its first result.
 
 `Loading` displays fallback for an initially unready branch. Once revealed, it
-keeps stale content during revalidation. `<Loading on={id()} ...>` allows a
-changed expression to re-show fallback while data is pending. Without a boundary,
+keeps stale content during revalidation. `<Loading on={[id(), page()]} ...>`
+tracks the reads, not the returned value: a notification rearms the fallback
+if content is still pending. The fallback lands with the triggering update,
+not ahead of a held frame. Without a boundary,
 pending async delays the client root mount and warns `ASYNC_OUTSIDE_LOADING_BOUNDARY`.
 Streaming SSR instead holds the shell for an unbounded root hole.
 Read pending data in JSX/compute; untracked pending reads throw.
@@ -43,6 +45,23 @@ value and hydration starts from that same first paint. Without a loading value,
 the server renders the nearest `Loading` fallback for the structural client hole.
 A bare client source outside a server boundary is a render error.
 
+### Deferred reads and hydration
+
+Use `createDeferred(() => fetchResults(query()))` from `solid-js` when the new
+query must show immediately while results keep their previous answer. First
+readiness still uses `Loading`. On a later query change, the refetch **does
+not hold the query write**: JSX can show the new `query()` beside the old
+result, and `isPending(results)` is true until the new answer. This is not a
+debounce or an idle scheduler; a synchronous compute behaves like `createMemo`.
+
+For async SSR sources, `"server"` (default) adopts the serialized answer on
+hydration. The client still runs the compute synchronously to track dependencies
+and discards the result; an `await` before the first fetch can escape that window
+and issue a duplicate request. `"hybrid"` continues an async iterable on the
+client after the server's first yield, skipping the client's duplicate first
+yield; for a synchronous or Promise-shaped compute it acts like `"server"`.
+Use `"client"` to defer browser-only work rather than using `"hybrid"` for it.
+
 ## Pending and process state
 
 `isPending(fn)` performs the read. It reports an unrevealed value change or a live
@@ -59,7 +78,7 @@ A bare client source outside a server boundary is a render error.
 |---|---|
 | Tracked input changes (id/query key) | Pending until the new answer reveals |
 | Bare `refresh(source)` or same-input poll | Quiet re-ask; fresh answer reveals silently |
-| `affects(source)` inside an action | Pending until that transaction settles/reverts |
+| `affects(source)` inside an action | Pending until the action settles/reverts, or the source's own still-running flight lands |
 | Optimistic write | Changes displayed data; neither creates nor masks pending |
 
 `isPending(id)` observes that signal, not loading of downstream data.
@@ -81,13 +100,16 @@ declare function affects<T extends object>(target: Store<T>, key: keyof T): void
 ```
 
 - `affects(accessor)` marks that source.
-- `affects(store)` marks records reachable at declaration time, including captured
-  row proxies. Later-added records and sibling stores are outside that snapshot.
+- `affects(store)` marks its view of records reachable at declaration time,
+  including captured row proxies. Later-added records are outside that snapshot.
+  Marking a derived wrapper marks its view, not the original store it wraps.
+  A plain store slot can instead expose the original proxy itself; that is a
+  shared store, not an isolated derived view.
 - `affects(record, "field")` marks exactly one slot. For multiple slots, make
   multiple calls or target the nested record; the optional key is a single key.
 
-Marked data stays readable. Marks propagate to derivations and can hold an
-unrevealed `Loading` fallback; an already revealed boundary stays visible.
+Marked data stays readable. Marks propagate to derivations without suspending
+readers or holding the transaction; actual async data controls `Loading`.
 For a reload indicator:
 
 ```tsx
@@ -120,13 +142,39 @@ use `const currentId = () => latest(id)`, then read `currentId()` in JSX/compute
 
 ### Awaitable refresh
 
+Unlike `affects`, `refresh` does not take an arbitrary `Accessor` or `Store`.
+Its published signature is:
+
+```ts
+import type { Refreshable } from "solid-js";
+declare function refresh<T>(
+  target: Refreshable<T>,
+): Promise<T extends (...args: any) => infer V ? V : T>;
+```
+
 `refresh(target)` invalidates the target and returns a Promise for its next
 quiescent state. Superseding invalidations fold into that wait; it returns whatever
-finally settles. An accessor target resolves with its value; a store target
-resolves with the passed node. A nested node belongs to the derived root's family:
-refreshing it re-runs that root's derive function and can update siblings too.
-It has no separate node-local derive. Unrelated upstream computations are outside
-that refresh.
+finally settles. An accessor target resolves with its value; a derived store
+target resolves with that store. Pass the original source accessor or the
+derived store root, which carries the `Refreshable` type. To update a row, use
+`await refresh(store)` then read `store.row`; the derive runs for the whole
+store, not one slot. Don't pass an accessor wrapper or cast a nested read.
+
+```ts
+import { createStore, refresh } from "solid-js";
+
+type Row = { id: string; label: string };
+function createRows(load: () => Promise<Row[]>) {
+  const [rows] = createStore<Row[]>(load, []);
+  return {
+    rows,
+    async reloadRow(id: string) {
+      const freshRows = await refresh(rows);
+      return freshRows.find(row => row.id === id);
+    },
+  };
+}
+```
 
 A failed refresh rejects with the original source error; ignoring its Promise is safe from an
 unhandled rejection. It stays quiet for `isPending`, including when awaited.
@@ -294,16 +342,40 @@ const user = createMemo(async () => {
 });
 ```
 
-Superseded results are discarded; cleanup stops the external operation. After
-suspension, owner context is absent (`NO_OWNER_CLEANUP`). Pending lazy work survives
-temporary zero-subscriber gaps; rejoining subscribers reuse it until settlement.
-Owner cleanup is not a guarantee that the previous operation stops before the
-next compute starts. When overlap is forbidden, explicitly cancel the previous
-operation before starting its replacement, as in the socket pattern below.
+Solid discards superseded results. Cleanup for a run that never committed is
+prompt on supersede; a visible run stays live until its replacement lands or
+its owner is disposed. Do not make the replacement wait on visible-run cleanup.
+After suspension, owner context is absent (`NO_OWNER_CLEANUP`). Pending lazy
+work survives temporary zero-subscriber gaps; rejoining subscribers reuse it.
 
-Disposal calls the iterator's `.return()`, but that call queues behind a parked await.
-Register cleanup that actively closes/unblocks the source so `finally` can run.
-See [socket and SWR patterns](patterns.md) for a cancellable stream.
+`from()` returns an async iterable, not an accessor. For a callback
+subscription or Observable, return it directly from a memo:
+
+```tsx
+import { createMemo, from, Loading } from "solid-js";
+
+function ChannelView(props: {
+  channel: string;
+  subscribe: (channel: string, next: (value: string) => void, error: (error: unknown) => void) => () => void;
+}) {
+  const message = createMemo(() => {
+    const channel = props.channel;
+    const subscribe = props.subscribe;
+    return from<string>((next, error) => subscribe(channel, next, error));
+  });
+  return <Loading fallback={<p>Connecting…</p>}><p>{message()}</p></Loading>;
+}
+```
+
+Read changing props in compute, before registering the subscription. This
+makes the dependencies explicit rather than relying on when the adapter or
+transport invokes a callback. Do not capture a replaceable prop in component setup.
+`from` also accepts an async iterable. Push values coalesce to the latest
+between pulls; synchronous emission during subscribe avoids a loading frame.
+The adapter closes on supersede/disposal. Solid calls `.return()` on a returned
+iterator, but an async generator parked in `await` cannot unwind until that
+await settles. Give low-level sources real cancellation; see the
+[socket pattern](patterns.md#streaming-a-socket).
 
 ## Errors
 

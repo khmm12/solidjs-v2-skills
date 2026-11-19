@@ -11,8 +11,11 @@ const root = mkdtempSync(join(tmpdir(), 'solid-eval-test-'));
 try {
   const repo = dirname(dirname(fileURLToPath(import.meta.url)));
   const bank = JSON.parse(readFileSync(join(repo, 'evals/questions.json'), 'utf8'));
-  const skill = readFileSync(join(repo, 'skills/solidjs-v2/SKILL.md'), 'utf8');
-  assert.match(skill, /^Reference target: `solid-js@[^`]+` and `@solidjs\/web@[^`]+`\.$/m);
+  const targets = bank.meta.target.split(' / ');
+  for (const name of ['solidjs-v2', 'solidjs-v2-migration', 'solidjs-v2-reviewer']) {
+    const skill = readFileSync(join(repo, 'skills', name, 'SKILL.md'), 'utf8');
+    assert(skill.includes(`\nReference target: \`${targets[0]}\` and \`${targets[1]}\`.\n`), name);
+  }
   assert(bank.meta.rubric_revision);
   assert.equal(new Set(bank.questions.map(q => q.id)).size, bank.questions.length);
   for (const q of bank.questions) {
@@ -23,7 +26,8 @@ try {
     const refs = q.source.match(/[a-z-]+\.md/g);
     assert(refs?.length, `missing source: ${q.id}`);
     for (const ref of refs) {
-      const text = readFileSync(join(repo, 'skills/solidjs-v2/references', ref), 'utf8');
+      const skill = ref === 'migration-map.md' ? 'solidjs-v2-migration' : 'solidjs-v2';
+      const text = readFileSync(join(repo, 'skills', skill, 'references', ref), 'utf8');
       assert.match(text, /^# /);
       assert(!text.includes('Verified against'));
     }
@@ -43,12 +47,15 @@ const cwd = process.argv[process.argv.indexOf('--cd') + 1];
 const skill = path.join(cwd, '.agents/skills/solidjs-v2/SKILL.md');
 const withSkill = prompt.startsWith('Use only local read-only');
 assert.equal(fs.existsSync(skill), withSkill, 'skills must be isolated from controls and judges');
-assert(!prompt.includes('SKILL.md') && !prompt.includes('/references/'), 'question must not point to skill');
+if (!prompt.includes('Shared sources:')) {
+  assert(!prompt.includes('SKILL.md') && !prompt.includes('/references/'), 'question must not point to skill');
+}
 let text = 'fixture evidence';
 if (prompt.includes('Assess each entry independently')) {
   const entries = JSON.parse(prompt.slice(prompt.lastIndexOf('\\n\\n[{') + 2));
   const sources = JSON.parse(prompt.split('Shared sources:\\n')[1].split('\\n\\n[{')[0]);
-  assert(sources.length === 9 && sources.every(s => s.text.startsWith('# ')));
+  assert(sources.some(s => s.id === 'migration-map.md'));
+  assert(sources.find(s => s.id === 'solidjs-v2/SKILL.md').text.includes('Reference target:'));
   const sourceEvidence = sources[0].text.split('\\n').find(Boolean);
   assert(entries.every(e => !e.sources), 'shared references appear once per batch');
   text = JSON.stringify({grades: entries.map(e => ({id: e.id,

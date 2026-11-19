@@ -1,7 +1,7 @@
 # Control flow and DOM
 
-Control-flow components come from `solid-js`; `render`, `hydrate`, `Portal`,
-`dynamic`, and `Dynamic` come from `@solidjs/web`.
+Control-flow components and `dynamicComponent` come from `solid-js`; `render`,
+`hydrate`, `Portal`, and `dynamic` come from `@solidjs/web`.
 
 ## Lists
 
@@ -79,15 +79,18 @@ synchronous `renderToString` supports natural and uncollapsed sequential.
 ## Dynamic and lazy components
 
 ```tsx
+import { dynamic } from "@solidjs/web";
+
 const Active = dynamic(() => editing() ? Editor : Viewer);
 <Active value={value()} />
-// Inline equivalent:
-<Dynamic component={editing() ? Editor : Viewer} value={value()} />
 ```
 
-The factory returns a stable component, shares source evaluation across instances,
-and accepts async component sources. Imperative construction uses
-`createComponent(dynamic(source), props)`.
+The factory returns a stable component and accepts a reactive source. Use
+`dynamic` if the source can return native tags. For component-only sources,
+including server components, prefer `dynamicComponent` from `solid-js`: it
+does not retain the native tag renderer. `<Dynamic component={...}>` still
+works but is deprecated. Imperative construction passes the returned component
+to `createComponent(factoryResult, props)`.
 
 ### SSR shell timing
 
@@ -133,8 +136,8 @@ platform forms: `value`, `defaultValue`, `checked`, `defaultChecked`, `selected`
 
 ARIA true/false states are strings, not HTML boolean attributes:
 `aria-pressed={selected() ? "true" : "false"}`. Boolean `false` removes the
-attribute; the string `"false"` exposes an explicit false state. Published rc.8
-JSX types reject boolean `true` for these enumerated ARIA attributes.
+attribute; the string `"false"` exposes an explicit false state. JSX types
+reject boolean `true` for these enumerated ARIA attributes.
 
 ```tsx
 <div class={["card", props.class, { active: active() }]} />
@@ -145,10 +148,38 @@ Class accepts strings, arrays, and objects. Event binding expressions are evalua
 once; put changing decisions inside a stable callback. Spread props reapply changed
 handlers, which is a separate binding path.
 
+Lowercase `onclick` is an attribute, not a listener; use `onClick`. On native
+elements, the compiler rejects legacy `on:`, `oncapture:`, `attr:`, `bool:`,
+`use:`, and `classList` syntax.
+
 Delegated listeners belong to render containers, including ShadowRoots; root
 disposal removes them. Portal events bubble through the logical tree.
 Native listener options belong in ref setup, with cleanup where its lifetime
 requires removal (especially shared/external nodes).
+
+### Editable inputs
+
+For editable text, bind `value` to a draft updated on `onInput`. Commit
+separately (e.g. on submit). Binding only the saved value can overwrite text on
+a binding rerun, including one caused by a sibling binding in the same
+compiled template. If the field does not need reactive state, use
+`defaultValue` and read the form at submit instead.
+
+Solid does not reassert a value when a setter receives the same value. Write
+back to the element in the input handler when rejecting or normalizing an edit:
+
+```tsx
+import { createSignal } from "solid-js";
+
+function Digits() {
+  const [digits, setDigits] = createSignal("");
+  return <input inputmode="numeric" value={digits()} onInput={event => {
+    const next = event.currentTarget.value.replace(/\D/g, "");
+    event.currentTarget.value = next;
+    setDigits(next);
+  }} />;
+}
+```
 
 ## Refs and directives
 
